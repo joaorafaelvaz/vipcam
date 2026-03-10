@@ -3,16 +3,17 @@ services:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_USER: vipcam
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: vipcam
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U vipcam -d vipcam"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     networks:
       - vipcam
 
@@ -25,7 +26,7 @@ services:
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
     entrypoint: >
-      sh -c "psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'CREATE EXTENSION IF NOT EXISTS vector;' && psql -h db -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";'"
+      sh -c "psql -h db -U vipcam -d vipcam -c 'CREATE EXTENSION IF NOT EXISTS vector;' && psql -h db -U vipcam -d vipcam -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";'"
     networks:
       - vipcam
 
