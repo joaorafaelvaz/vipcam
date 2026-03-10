@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: vipcam
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: d08688ea560642be34fc15
       POSTGRES_DB: vipcam
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -24,7 +24,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD: d08688ea560642be34fc15
     entrypoint: >
       sh -c "psql -h db -U vipcam -d vipcam -c 'CREATE EXTENSION IF NOT EXISTS vector;' && psql -h db -U vipcam -d vipcam -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";'"
     networks:
@@ -48,40 +48,40 @@ services:
     image: vipcam-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES}
-      YOLO_MODEL_PATH: ${YOLO_MODEL_PATH}
-      YOLO_IMGSZ: ${YOLO_IMGSZ}
-      YOLO_CONF: ${YOLO_CONF}
-      INSIGHTFACE_MODEL_NAME: ${INSIGHTFACE_MODEL_NAME}
-      INSIGHTFACE_DET_SIZE: ${INSIGHTFACE_DET_SIZE}
-      HSEMOTION_MODEL_NAME: ${HSEMOTION_MODEL_NAME}
-      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD}
-      FACE_QUALITY_MIN: ${FACE_QUALITY_MIN}
-      FACE_MAX_EMBEDDINGS_PER_PERSON: ${FACE_MAX_EMBEDDINGS_PER_PERSON}
-      EMOTION_EMA_ALPHA: ${EMOTION_EMA_ALPHA}
-      EMOTION_SHIFT_MIN_FRAMES: ${EMOTION_SHIFT_MIN_FRAMES}
-      PROCESSING_FPS_TARGET: ${PROCESSING_FPS_TARGET}
-      SCENE_CHANGE_THRESHOLD: ${SCENE_CHANGE_THRESHOLD}
-      ENABLE_PIPELINE: ${ENABLE_PIPELINE}
+      DATABASE_URL: postgresql+asyncpg://vipcam:d08688ea560642be34fc15@db:5432/vipcam
+      REDIS_URL: redis://redis:6379/0
+      CUDA_VISIBLE_DEVICES: "0"
+      YOLO_MODEL_PATH: /models/yolov8x.pt
+      YOLO_IMGSZ: "1280"
+      YOLO_CONF: "0.5"
+      INSIGHTFACE_MODEL_NAME: buffalo_l
+      INSIGHTFACE_DET_SIZE: "640"
+      HSEMOTION_MODEL_NAME: enet_b2_8
+      FACE_MATCH_THRESHOLD: "0.6"
+      FACE_QUALITY_MIN: "0.7"
+      FACE_MAX_EMBEDDINGS_PER_PERSON: "5"
+      EMOTION_EMA_ALPHA: "0.3"
+      EMOTION_SHIFT_MIN_FRAMES: "3"
+      PROCESSING_FPS_TARGET: "5"
+      SCENE_CHANGE_THRESHOLD: "0.03"
+      ENABLE_PIPELINE: "true"
       API_HOST: "0.0.0.0"
       API_PORT: "8000"
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_ALGORITHM: ${JWT_ALGORITHM}
-      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES}
-      CORS_ORIGINS: ${CORS_ORIGINS}
-      SNAPSHOT_DIR: ${SNAPSHOT_DIR}
-      FACE_CROP_DIR: ${FACE_CROP_DIR}
-      MAX_SNAPSHOTS: ${MAX_SNAPSHOTS}
-      CAMERA_1_NAME: ${CAMERA_1_NAME}
-      CAMERA_1_URL: ${CAMERA_1_URL}
-      CAMERA_1_LOCATION: ${CAMERA_1_LOCATION}
-      CAMERA_1_FPS: ${CAMERA_1_FPS}
-      CAMERA_2_NAME: ${CAMERA_2_NAME}
-      CAMERA_2_URL: ${CAMERA_2_URL}
-      CAMERA_2_LOCATION: ${CAMERA_2_LOCATION}
-      CAMERA_2_FPS: ${CAMERA_2_FPS}
+      JWT_SECRET: d08688ea560642be34fc15635b6e0b4613921c3a0653cb7e20fd4e9b96cd7cab
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: "1440"
+      CORS_ORIGINS: '["https://v3.sensevip.ia.br"]'
+      SNAPSHOT_DIR: /data/snapshots
+      FACE_CROP_DIR: /data/face_crops
+      MAX_SNAPSHOTS: "10000"
+      CAMERA_1_NAME: "Salão Principal"
+      CAMERA_1_URL: "rtsp://admin:14D3608ff1@192.168.15.181:8554/stream0"
+      CAMERA_1_LOCATION: "Florianópolis - Santa Mônica"
+      CAMERA_1_FPS: "5"
+      CAMERA_2_NAME: "Recepção"
+      CAMERA_2_URL: "rtsp://admin:senha@192.168.0.102:554/onvif1"
+      CAMERA_2_LOCATION: "Florianópolis - Santa Mônica - Recepção"
+      CAMERA_2_FPS: "3"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
