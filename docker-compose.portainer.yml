@@ -1,0 +1,123 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vipcam}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-vipcam}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vipcam}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vipcam
+
+  db-init:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    entrypoint: >
+      sh -c "psql -h db -U ${POSTGRES_USER:-vipcam} -d ${POSTGRES_DB:-vipcam} -c 'CREATE EXTENSION IF NOT EXISTS vector;' && psql -h db -U ${POSTGRES_USER:-vipcam} -d ${POSTGRES_DB:-vipcam} -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";'"
+    networks:
+      - vipcam
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vipcam
+
+  backend:
+    image: vipcam-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://vipcam:changeme@db:5432/vipcam}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      YOLO_MODEL_PATH: ${YOLO_MODEL_PATH:-/models/yolov8x.pt}
+      YOLO_IMGSZ: ${YOLO_IMGSZ:-1280}
+      YOLO_CONF: ${YOLO_CONF:-0.5}
+      INSIGHTFACE_MODEL_NAME: ${INSIGHTFACE_MODEL_NAME:-buffalo_l}
+      INSIGHTFACE_DET_SIZE: ${INSIGHTFACE_DET_SIZE:-640}
+      HSEMOTION_MODEL_NAME: ${HSEMOTION_MODEL_NAME:-enet_b2_8}
+      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.6}
+      FACE_QUALITY_MIN: ${FACE_QUALITY_MIN:-0.7}
+      FACE_MAX_EMBEDDINGS_PER_PERSON: ${FACE_MAX_EMBEDDINGS_PER_PERSON:-5}
+      EMOTION_EMA_ALPHA: ${EMOTION_EMA_ALPHA:-0.3}
+      EMOTION_SHIFT_MIN_FRAMES: ${EMOTION_SHIFT_MIN_FRAMES:-3}
+      PROCESSING_FPS_TARGET: ${PROCESSING_FPS_TARGET:-5}
+      ENABLE_PIPELINE: ${ENABLE_PIPELINE:-true}
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      JWT_SECRET: ${JWT_SECRET:-trocar_por_chave_segura}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-1440}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["https://v3.sensevip.ia.br"]}
+      SNAPSHOT_DIR: /data/snapshots
+      FACE_CROP_DIR: /data/face_crops
+      CAMERA_1_NAME: ${CAMERA_1_NAME:-}
+      CAMERA_1_URL: ${CAMERA_1_URL:-}
+      CAMERA_1_LOCATION: ${CAMERA_1_LOCATION:-}
+      CAMERA_1_FPS: ${CAMERA_1_FPS:-5}
+      CAMERA_2_NAME: ${CAMERA_2_NAME:-}
+      CAMERA_2_URL: ${CAMERA_2_URL:-}
+      CAMERA_2_LOCATION: ${CAMERA_2_LOCATION:-}
+      CAMERA_2_FPS: ${CAMERA_2_FPS:-3}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - model_data:/models
+      - app_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - vipcam
+
+  frontend:
+    image: vipcam-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=https://v3.sensevip.ia.br
+      - NEXT_PUBLIC_WS_URL=wss://v3.sensevip.ia.br
+    depends_on:
+      - backend
+    networks:
+      - vipcam
+
+volumes:
+  pgdata:
+  redis_data:
+  model_data:
+  app_data:
+
+networks:
+  vipcam:
+    driver: bridge
