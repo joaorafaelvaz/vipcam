@@ -1,10 +1,25 @@
 "use client";
 
+import { useEffect } from "react";
+
+import { Header } from "@/components/layout/Header";
+import { CameraGrid } from "@/components/dashboard/CameraGrid";
+import { useCameraStore } from "@/stores/useCameraStore";
+
 export default function DashboardPage() {
+  const cameras = useCameraStore((s) => s.cameras);
+  const fetchCameras = useCameraStore((s) => s.fetchCameras);
+
+  useEffect(() => {
+    fetchCameras();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-zinc-100">Dashboard</h1>
-      <p className="text-zinc-400 mt-2">Pagina de teste — se voce ve isto, o React funciona.</p>
+    <div>
+      <Header title="Dashboard" subtitle={`${cameras.length} cameras`} />
+      <div className="p-6">
+        <CameraGrid cameras={cameras} />
+      </div>
     </div>
   );
 }

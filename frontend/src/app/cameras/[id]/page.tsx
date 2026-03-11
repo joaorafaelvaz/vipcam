@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -11,13 +11,19 @@ import { Badge } from "@/components/ui/Badge";
 import { useRealtimeStore } from "@/stores/useRealtimeStore";
 import { api } from "@/lib/api";
 import { formatEmotion, emotionColor } from "@/lib/utils";
-import type { Camera } from "@/types";
+import type { Camera, WSPersonData } from "@/types";
+
+const EMPTY_PERSONS: WSPersonData[] = [];
 
 export default function CameraDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [camera, setCamera] = useState<Camera | null>(null);
-  const occupancy = useRealtimeStore((s) => s.occupancy[id] ?? 0);
-  const persons = useRealtimeStore((s) => s.latestPersons[id] ?? []);
+  const occupancy = useRealtimeStore(
+    useCallback((s) => s.occupancy[id] ?? 0, [id]),
+  );
+  const persons = useRealtimeStore(
+    useCallback((s) => s.latestPersons[id] ?? EMPTY_PERSONS, [id]),
+  );
 
   useEffect(() => {
     api.get<Camera>(`/cameras/${id}`).then(setCamera);
