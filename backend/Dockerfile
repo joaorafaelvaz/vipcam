@@ -15,10 +15,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[dev]"
-
+# Copiar tudo primeiro, depois instalar
 COPY . .
+RUN pip install --no-cache-dir ".[dev]"
 
 EXPOSE 8000
 
