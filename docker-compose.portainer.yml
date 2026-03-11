@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: vipcam
       POSTGRES_PASSWORD: d08688ea560642be34fc15
       POSTGRES_DB: vipcam
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -34,6 +36,8 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -47,9 +51,10 @@ services:
   backend:
     image: vipcam-backend
     restart: unless-stopped
+    network_mode: host
     environment:
-      DATABASE_URL: postgresql+asyncpg://vipcam:d08688ea560642be34fc15@db:5432/vipcam
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://vipcam:d08688ea560642be34fc15@127.0.0.1:5433/vipcam
+      REDIS_URL: redis://127.0.0.1:6380/0
       CUDA_VISIBLE_DEVICES: "0"
       YOLO_MODEL_PATH: /models/yolov8x.pt
       YOLO_IMGSZ: "1280"
@@ -66,7 +71,7 @@ services:
       SCENE_CHANGE_THRESHOLD: "0.03"
       ENABLE_PIPELINE: "false"
       API_HOST: "0.0.0.0"
-      API_PORT: "8000"
+      API_PORT: "8001"
       JWT_SECRET: d08688ea560642be34fc15635b6e0b4613921c3a0653cb7e20fd4e9b96cd7cab
       JWT_ALGORITHM: HS256
       JWT_EXPIRE_MINUTES: "1440"
@@ -74,16 +79,6 @@ services:
       SNAPSHOT_DIR: /data/snapshots
       FACE_CROP_DIR: /data/face_crops
       MAX_SNAPSHOTS: "10000"
-      CAMERA_1_NAME: "Salão Principal"
-      CAMERA_1_URL: "rtsp://admin:14D3608ff1@192.168.15.170:8554/stream0"
-      CAMERA_1_LOCATION: "Florianópolis - Santa Mônica"
-      CAMERA_1_FPS: "5"
-      CAMERA_2_NAME: "Recepção"
-      CAMERA_2_URL: "rtsp://admin:senha@192.168.0.102:554/onvif1"
-      CAMERA_2_LOCATION: "Florianópolis - Santa Mônica - Recepção"
-      CAMERA_2_FPS: "3"
-    ports:
-      - "127.0.0.1:8001:8000"
     volumes:
       - model_data:/models
       - app_data:/data
@@ -99,8 +94,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    networks:
-      - vipcam
 
   frontend:
     image: vipcam-frontend

@@ -15,11 +15,22 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
-def _grab_frame(rtsp_url: str, timeout: float = 10.0) -> bytes:
+import os
+os.environ.setdefault("OPENCV_FFMPEG_READ_ATTEMPTS", "4096")
+
+
+def _grab_frame(rtsp_url: str, timeout_ms: int = 10000) -> bytes:
     """Grab a single JPEG frame from an RTSP URL (runs in thread)."""
-    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT, int(timeout * 1000))
-    cap.set(cv2.CAP_PROP_READ_TIMEOUT, int(timeout * 1000))
+    # Force TCP transport and set stimeout (microseconds) for RTSP via FFMPEG options
+    url_with_opts = rtsp_url
+    sep = "&" if "?" in rtsp_url else "?"
+    if "rtsp_transport" not in rtsp_url:
+        url_with_opts += f"{sep}rtsp_transport=tcp"
+        sep = "&"
+    if "stimeout" not in rtsp_url:
+        url_with_opts += f"{sep}stimeout={timeout_ms * 1000}"
+
+    cap = cv2.VideoCapture(url_with_opts, cv2.CAP_FFMPEG)
     try:
         if not cap.isOpened():
             raise ConnectionError(f"Cannot open RTSP stream: {rtsp_url}")
