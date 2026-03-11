@@ -75,7 +75,7 @@ services:
       FACE_CROP_DIR: /data/face_crops
       MAX_SNAPSHOTS: "10000"
       CAMERA_1_NAME: "Salão Principal"
-      CAMERA_1_URL: "rtsp://admin:14D3608ff1@192.168.15.181:8554/stream0"
+      CAMERA_1_URL: "rtsp://admin:14D3608ff1@192.168.15.170:8554/stream0"
       CAMERA_1_LOCATION: "Florianópolis - Santa Mônica"
       CAMERA_1_FPS: "5"
       CAMERA_2_NAME: "Recepção"
@@ -83,7 +83,7 @@ services:
       CAMERA_2_LOCATION: "Florianópolis - Santa Mônica - Recepção"
       CAMERA_2_FPS: "3"
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8000"
     volumes:
       - model_data:/models
       - app_data:/data
@@ -106,7 +106,7 @@ services:
     image: vipcam-frontend
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3000"
     depends_on:
       - backend
     networks:
