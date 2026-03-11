@@ -24,7 +24,8 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
     if (wsConnection) return;
 
     const wsUrl =
-      process.env.NEXT_PUBLIC_WS_URL || `ws://${window.location.hostname}:8000`;
+      process.env.NEXT_PUBLIC_WS_URL ||
+      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
 
     wsConnection = createWSConnection(
       `${wsUrl}/ws/live`,

@@ -24,19 +24,26 @@ export default function CamerasPage() {
     fetchCameras();
   }, [fetchCameras]);
 
+  const [formError, setFormError] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createCamera({
-      name,
-      location: location || null,
-      rtsp_url: rtspUrl,
-      fps_target: fpsTarget,
-    });
-    setShowForm(false);
-    setName("");
-    setLocation("");
-    setRtspUrl("");
-    setFpsTarget(5);
+    setFormError(null);
+    try {
+      await createCamera({
+        name,
+        location: location || null,
+        rtsp_url: rtspUrl,
+        fps_target: fpsTarget,
+      });
+      setShowForm(false);
+      setName("");
+      setLocation("");
+      setRtspUrl("");
+      setFpsTarget(5);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Erro ao salvar camera");
+    }
   };
 
   return (
@@ -100,6 +107,11 @@ export default function CamerasPage() {
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
                   />
                 </div>
+                {formError && (
+                  <div className="col-span-2 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-400">
+                    {formError}
+                  </div>
+                )}
                 <div className="col-span-2 flex gap-2 justify-end">
                   <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>
                     Cancelar
