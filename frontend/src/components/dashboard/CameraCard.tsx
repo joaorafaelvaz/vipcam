@@ -1,4 +1,7 @@
-import { Camera as CameraIcon } from "lucide-react";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Camera as CameraIcon, WifiOff } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import type { Camera } from "@/types";
@@ -8,12 +11,69 @@ interface CameraCardProps {
 }
 
 export function CameraCard({ camera }: CameraCardProps) {
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let fails = 0;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/cameras/${camera.id}/snapshot`);
+        if (!mountedRef.current) return;
+        if (res.ok) {
+          const blob = await res.blob();
+          if (!mountedRef.current) return;
+          const url = URL.createObjectURL(blob);
+          setImgSrc((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return url;
+          });
+          setError(false);
+          fails = 0;
+          timer = setTimeout(poll, 5000);
+        } else {
+          fails++;
+          setError(true);
+          if (fails < 5) timer = setTimeout(poll, 15000);
+        }
+      } catch {
+        if (!mountedRef.current) return;
+        fails++;
+        setError(true);
+        if (fails < 5) timer = setTimeout(poll, 15000);
+      }
+    }
+
+    timer = setTimeout(poll, 500 + Math.random() * 2000);
+
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(timer);
+    };
+  }, [camera.id]);
+
   return (
     <Card className="overflow-hidden group hover:border-zinc-700/80 transition-colors">
       <div className="relative aspect-video bg-zinc-900">
-        <div className="flex h-full w-full items-center justify-center">
-          <CameraIcon className="h-8 w-8 text-zinc-700" />
-        </div>
+        {imgSrc && !error ? (
+          <img
+            src={imgSrc}
+            alt={camera.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            {error ? (
+              <WifiOff className="h-8 w-8 text-zinc-700" />
+            ) : (
+              <CameraIcon className="h-8 w-8 text-zinc-700 animate-pulse" />
+            )}
+          </div>
+        )}
         <div className="absolute top-2 left-2">
           <div
             className={`h-2.5 w-2.5 rounded-full ${
