@@ -54,22 +54,46 @@ class GPUWorker:
         if self._loaded:
             return
         logger.info("Loading GPU models...")
-        self._detector.load()
-        self._recognizer.load()
-        self._emotion_analyzer.load()
+
+        # Load each model independently so a single failure doesn't kill the process
+        try:
+            self._detector.load()
+            logger.info("YOLO detector loaded")
+        except Exception as e:
+            logger.error("Failed to load YOLO detector", error=str(e))
+            self._detector = None
+
+        try:
+            self._recognizer.load()
+            logger.info("InsightFace recognizer loaded")
+        except Exception as e:
+            logger.error("Failed to load InsightFace recognizer", error=str(e))
+            self._recognizer = None
+
+        try:
+            self._emotion_analyzer.load()
+            logger.info("HSEmotion analyzer loaded")
+        except Exception as e:
+            logger.error("Failed to load HSEmotion analyzer", error=str(e))
+            self._emotion_analyzer = None
+
         self._loaded = True
 
         try:
             import torch
-            allocated = torch.cuda.memory_allocated() / 1024**3
-            reserved = torch.cuda.memory_reserved() / 1024**3
-            logger.info(
-                "GPU models loaded",
-                vram_allocated_gb=f"{allocated:.2f}",
-                vram_reserved_gb=f"{reserved:.2f}",
-            )
-        except ImportError:
-            logger.info("GPU models loaded (torch not available for VRAM info)")
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(
+                    "GPU models loaded",
+                    vram_allocated_gb=f"{allocated:.2f}",
+                    vram_reserved_gb=f"{reserved:.2f}",
+                    detector=self._detector is not None,
+                    recognizer=self._recognizer is not None,
+                    emotion_analyzer=self._emotion_analyzer is not None,
+                )
+        except Exception:
+            logger.info("GPU models loaded (VRAM info unavailable)")
 
     def process_frame(self, camera_id: str, frame: np.ndarray) -> FrameResult:
         if not self._loaded:
@@ -78,15 +102,23 @@ class GPUWorker:
         start = time.monotonic()
 
         # 1. Detect persons
-        detections = self._detector.detect_with_tracking(frame)
+        detections = []
+        if self._detector is not None:
+            detections = self._detector.detect_with_tracking(frame)
 
         # 2. Detect and analyze faces
-        face_datas = self._recognizer.analyze(frame)
+        face_datas = []
+        if self._recognizer is not None:
+            face_datas = self._recognizer.analyze(frame)
 
         # 3. For each face, run emotion analysis
         face_results: list[FaceResult] = []
         for face in face_datas:
-            emotion = self._emotion_analyzer.analyze(frame, face.bbox)
+            emotion = None
+            if self._emotion_analyzer is not None:
+                emotion = self._emotion_analyzer.analyze(frame, face.bbox)
+            if emotion is None:
+                continue
             face_results.append(
                 FaceResult(
                     person_id=None,  # Will be filled by pipeline manager

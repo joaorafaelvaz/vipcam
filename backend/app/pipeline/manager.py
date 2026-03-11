@@ -41,7 +41,11 @@ class PipelineManager:
 
         # Load GPU models in thread pool (blocking)
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(self._executor, self._gpu_worker.load_models)
+        try:
+            await loop.run_in_executor(self._executor, self._gpu_worker.load_models)
+        except Exception as e:
+            logger.error("GPU model loading failed", error=str(e))
+            raise
 
         # Load cameras from DB
         async with async_session() as db:
