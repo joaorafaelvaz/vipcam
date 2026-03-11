@@ -79,13 +79,22 @@ class EmotionAnalyzer:
         self._recognizer = None
 
     def load(self):
+        import torch
         from hsemotion.facial_emotions import HSEmotionRecognizer
 
         logger.info("Loading HSEmotion model...", model=self.model_name)
-        self._recognizer = HSEmotionRecognizer(
-            model_name=self.model_name,
-            device="cuda:0",
+        # PyTorch 2.6+ defaults weights_only=True which breaks hsemotion loading
+        _original_load = torch.load
+        torch.load = lambda *args, **kwargs: _original_load(
+            *args, **{**kwargs, "weights_only": False},
         )
+        try:
+            self._recognizer = HSEmotionRecognizer(
+                model_name=self.model_name,
+                device="cuda:0",
+            )
+        finally:
+            torch.load = _original_load
         logger.info("HSEmotion loaded successfully")
 
     def analyze(self, frame: np.ndarray, face_bbox: list[float]) -> EmotionResult:
