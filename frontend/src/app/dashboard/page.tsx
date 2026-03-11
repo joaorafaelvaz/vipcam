@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { Activity, Eye, SmilePlus, Users } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
