@@ -19,12 +19,15 @@ async def lifespan(app: FastAPI):
     await get_redis()
     logger.info("Redis connected")
 
-    # Start pipeline if enabled
+    # Start pipeline if enabled (non-blocking — API works even if pipeline fails)
     if settings.enable_pipeline:
-        from app.pipeline.manager import pipeline_manager
+        try:
+            from app.pipeline.manager import pipeline_manager
 
-        await pipeline_manager.start()
-        logger.info("Processing pipeline started")
+            await pipeline_manager.start()
+            logger.info("Processing pipeline started")
+        except Exception as e:
+            logger.error("Pipeline failed to start — API will continue without it", error=str(e))
 
     yield
 
