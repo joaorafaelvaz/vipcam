@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera as CameraIcon, WifiOff } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
@@ -18,35 +18,52 @@ export function CameraCard({ camera }: CameraCardProps) {
   const persons = useRealtimeStore((s) => s.latestPersons[camera.id] ?? []);
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
+  const failCountRef = useRef(0);
 
   useEffect(() => {
     let active = true;
+    let intervalId: ReturnType<typeof setTimeout> | null = null;
 
     async function fetchSnapshot() {
       try {
         const res = await fetch(`/api/cameras/${camera.id}/snapshot`);
-        if (res.ok && active) {
+        if (!active) return;
+        if (res.ok) {
           const blob = await res.blob();
+          if (!active) return;
           const url = URL.createObjectURL(blob);
           setSnapshotUrl((prev) => {
             if (prev) URL.revokeObjectURL(prev);
             return url;
           });
           setSnapshotError(false);
+          failCountRef.current = 0;
+          // Resume fast polling on success
+          scheduleNext(2000);
         } else {
+          failCountRef.current++;
           setSnapshotError(true);
+          // Back off: after 3 failures, poll every 30s instead of 2s
+          scheduleNext(failCountRef.current >= 3 ? 30000 : 2000);
         }
       } catch {
+        if (!active) return;
+        failCountRef.current++;
         setSnapshotError(true);
+        scheduleNext(failCountRef.current >= 3 ? 30000 : 2000);
       }
     }
 
+    function scheduleNext(delay: number) {
+      if (!active) return;
+      intervalId = setTimeout(fetchSnapshot, delay);
+    }
+
     fetchSnapshot();
-    const interval = setInterval(fetchSnapshot, 2000);
 
     return () => {
       active = false;
-      clearInterval(interval);
+      if (intervalId) clearTimeout(intervalId);
     };
   }, [camera.id]);
 

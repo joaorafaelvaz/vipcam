@@ -41,8 +41,6 @@ async def delete_camera(db: AsyncSession, camera_id: uuid.UUID) -> bool:
     camera = await get_camera(db, camera_id)
     if not camera:
         return False
-    await db.execute(
-        update(Camera).where(Camera.id == camera_id).values(is_active=False)
-    )
+    await db.delete(camera)
     await db.flush()
     return True

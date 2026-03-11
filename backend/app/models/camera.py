@@ -29,5 +29,5 @@ class Camera(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
     )
 
-    events = relationship("CameraEvent", back_populates="camera", lazy="selectin")
-    emotion_records = relationship("EmotionRecord", back_populates="camera", lazy="noload")
+    events = relationship("CameraEvent", back_populates="camera", lazy="selectin", cascade="all, delete-orphan")
+    emotion_records = relationship("EmotionRecord", back_populates="camera", lazy="noload", cascade="all, delete-orphan")

@@ -11,8 +11,10 @@ import { useCameraStore } from "@/stores/useCameraStore";
 import { useRealtimeStore } from "@/stores/useRealtimeStore";
 
 export default function CamerasPage() {
-  const { cameras, fetchCameras, createCamera, deleteCamera } =
-    useCameraStore();
+  const cameras = useCameraStore((s) => s.cameras);
+  const fetchCameras = useCameraStore((s) => s.fetchCameras);
+  const createCamera = useCameraStore((s) => s.createCamera);
+  const deleteCamera = useCameraStore((s) => s.deleteCamera);
   const occupancy = useRealtimeStore((s) => s.occupancy);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");

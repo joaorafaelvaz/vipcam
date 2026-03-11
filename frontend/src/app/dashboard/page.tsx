@@ -10,7 +10,9 @@ import { useCameraStore } from "@/stores/useCameraStore";
 import { useRealtimeStore } from "@/stores/useRealtimeStore";
 
 export default function DashboardPage() {
-  const { cameras, fetchCameras, loading } = useCameraStore();
+  const cameras = useCameraStore((s) => s.cameras);
+  const fetchCameras = useCameraStore((s) => s.fetchCameras);
+  const loading = useCameraStore((s) => s.loading);
   const occupancy = useRealtimeStore((s) => s.occupancy);
   const latestPersons = useRealtimeStore((s) => s.latestPersons);
   const connected = useRealtimeStore((s) => s.connected);
