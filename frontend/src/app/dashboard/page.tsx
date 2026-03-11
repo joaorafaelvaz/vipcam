@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Activity, Eye, SmilePlus, Users } from "lucide-react";
 
 import { Header } from "@/components/layout/Header";
@@ -13,55 +13,14 @@ export default function DashboardPage() {
   const cameras = useCameraStore((s) => s.cameras);
   const fetchCameras = useCameraStore((s) => s.fetchCameras);
   const loading = useCameraStore((s) => s.loading);
-  const occupancy = useRealtimeStore((s) => s.occupancy);
-  const latestPersons = useRealtimeStore((s) => s.latestPersons);
   const connected = useRealtimeStore((s) => s.connected);
 
   useEffect(() => {
     fetchCameras();
-  }, [fetchCameras]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const totalPeople = Object.values(occupancy).reduce((a, b) => a + b, 0);
-  const totalFaces = Object.values(latestPersons).reduce(
-    (a, b) => a + b.length,
-    0,
-  );
   const activeCameras = cameras.filter((c) => c.is_active).length;
-
-  // Calculate average satisfaction across all visible persons
-  const allPersons = Object.values(latestPersons).flat();
-  const avgSatisfaction =
-    allPersons.length > 0
-      ? allPersons.reduce((sum, p) => sum + (p.satisfaction_score ?? 5), 0) /
-        allPersons.length
-      : null;
-
-  const stats = [
-    {
-      label: "Pessoas Detectadas",
-      value: totalPeople,
-      icon: Users,
-      color: "text-blue-400",
-    },
-    {
-      label: "Faces Reconhecidas",
-      value: totalFaces,
-      icon: Eye,
-      color: "text-emerald-400",
-    },
-    {
-      label: "Cameras Ativas",
-      value: activeCameras,
-      icon: Activity,
-      color: "text-amber-400",
-    },
-    {
-      label: "Satisfacao Media",
-      value: avgSatisfaction !== null ? `${avgSatisfaction.toFixed(1)}/10` : "—",
-      icon: SmilePlus,
-      color: "text-purple-400",
-    },
-  ];
 
   return (
     <div>
@@ -73,25 +32,30 @@ export default function DashboardPage() {
       <div className="p-6 space-y-6">
         {/* Stats row */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {stats.map((stat) => (
-            <Card key={stat.label}>
-              <CardContent className="flex items-center gap-4">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800/50 ${stat.color}`}
-                >
-                  <stat.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {stat.value}
-                  </p>
-                  <p className="text-[11px] text-zinc-500 uppercase tracking-wider">
-                    {stat.label}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <StatCard
+            icon={Users}
+            label="Cameras Ativas"
+            value={activeCameras}
+            color="text-blue-400"
+          />
+          <StatCard
+            icon={Eye}
+            label="Faces Reconhecidas"
+            value={0}
+            color="text-emerald-400"
+          />
+          <StatCard
+            icon={Activity}
+            label="Total Cameras"
+            value={cameras.length}
+            color="text-amber-400"
+          />
+          <StatCard
+            icon={SmilePlus}
+            label="Satisfacao Media"
+            value="—"
+            color="text-purple-400"
+          />
         </div>
 
         {/* Camera grid */}
@@ -109,5 +73,35 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  color,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string | number;
+  color: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800/50 ${color}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold tabular-nums">{value}</p>
+          <p className="text-[11px] text-zinc-500 uppercase tracking-wider">
+            {label}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

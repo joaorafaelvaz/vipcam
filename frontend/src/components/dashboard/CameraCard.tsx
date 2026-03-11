@@ -1,28 +1,34 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera as CameraIcon, WifiOff } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import { useRealtimeStore } from "@/stores/useRealtimeStore";
 import type { Camera } from "@/types";
-import { EmotionOverlay } from "./EmotionOverlay";
 import { OccupancyBadge } from "./OccupancyBadge";
+
+const EMPTY_PERSONS: never[] = [];
 
 interface CameraCardProps {
   camera: Camera;
 }
 
 export function CameraCard({ camera }: CameraCardProps) {
-  const occupancy = useRealtimeStore((s) => s.occupancy[camera.id] ?? 0);
-  const persons = useRealtimeStore((s) => s.latestPersons[camera.id] ?? []);
+  const occupancy = useRealtimeStore(
+    useCallback((s) => s.occupancy[camera.id] ?? 0, [camera.id]),
+  );
+  const persons = useRealtimeStore(
+    useCallback((s) => s.latestPersons[camera.id] ?? EMPTY_PERSONS, [camera.id]),
+  );
+  const connected = useRealtimeStore((s) => s.connected);
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
   const failCountRef = useRef(0);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let active = true;
-    let intervalId: ReturnType<typeof setTimeout> | null = null;
 
     async function fetchSnapshot() {
       try {
@@ -38,34 +44,38 @@ export function CameraCard({ camera }: CameraCardProps) {
           });
           setSnapshotError(false);
           failCountRef.current = 0;
-          // Resume fast polling on success
           scheduleNext(2000);
         } else {
           failCountRef.current++;
-          setSnapshotError(true);
-          // Back off: after 3 failures, poll every 30s instead of 2s
-          scheduleNext(failCountRef.current >= 3 ? 30000 : 2000);
+          if (failCountRef.current <= 1) setSnapshotError(true);
+          // After 3 failures, poll slowly; after 10, stop entirely
+          if (failCountRef.current >= 10) return;
+          scheduleNext(failCountRef.current >= 3 ? 30000 : 5000);
         }
       } catch {
         if (!active) return;
         failCountRef.current++;
-        setSnapshotError(true);
-        scheduleNext(failCountRef.current >= 3 ? 30000 : 2000);
+        if (failCountRef.current <= 1) setSnapshotError(true);
+        if (failCountRef.current >= 10) return;
+        scheduleNext(failCountRef.current >= 3 ? 30000 : 5000);
       }
     }
 
     function scheduleNext(delay: number) {
       if (!active) return;
-      intervalId = setTimeout(fetchSnapshot, delay);
+      timeoutRef.current = setTimeout(fetchSnapshot, delay);
     }
 
-    fetchSnapshot();
+    // Delay initial fetch to avoid burst on page load
+    timeoutRef.current = setTimeout(fetchSnapshot, 1000);
 
     return () => {
       active = false;
-      if (intervalId) clearTimeout(intervalId);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [camera.id]);
+
+  const dominantEmotion = persons.length > 0 ? persons[0]?.dominant_emotion : null;
 
   return (
     <Card className="overflow-hidden group hover:border-zinc-700/80 transition-colors">
@@ -103,8 +113,12 @@ export function CameraCard({ camera }: CameraCardProps) {
           />
         </div>
 
-        {/* Emotion overlay */}
-        <EmotionOverlay persons={persons} />
+        {/* Simple emotion indicator */}
+        {dominantEmotion && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+            <span className="text-[10px] text-zinc-300">{dominantEmotion}</span>
+          </div>
+        )}
       </div>
 
       {/* Info bar */}
@@ -119,9 +133,16 @@ export function CameraCard({ camera }: CameraCardProps) {
             </p>
           )}
         </div>
-        <span className="text-[10px] text-zinc-600 tabular-nums shrink-0 ml-2">
-          {camera.fps_target} FPS
-        </span>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <div
+            className={`h-1.5 w-1.5 rounded-full ${
+              connected ? "bg-emerald-400" : "bg-zinc-600"
+            }`}
+          />
+          <span className="text-[10px] text-zinc-600 tabular-nums">
+            {camera.fps_target} FPS
+          </span>
+        </div>
       </div>
     </Card>
   );
