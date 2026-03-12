@@ -1,0 +1,121 @@
+# docker-compose para macOS (Apple Silicon / Intel) — sem NVIDIA GPU
+# Uso: docker compose -f docker-compose.mac.yml up -d --build
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vipcam
+      POSTGRES_PASSWORD: vipcam_dev_2024
+      POSTGRES_DB: vipcam
+    expose:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vipcam -d vipcam"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  db-init:
+    image: pgvector/pgvector:pg16
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: vipcam_dev_2024
+    entrypoint: >
+      sh -c "psql -h db -U vipcam -d vipcam -c 'CREATE EXTENSION IF NOT EXISTS vector;' && psql -h db -U vipcam -d vipcam -c 'CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";'"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile.cpu
+    image: vipcam-backend-cpu
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vipcam:vipcam_dev_2024@db:5432/vipcam
+      REDIS_URL: redis://redis:6379/0
+      CUDA_VISIBLE_DEVICES: ""
+      YOLO_MODEL_PATH: /models/yolov8x.pt
+      YOLO_IMGSZ: "640"
+      YOLO_CONF: "0.5"
+      INSIGHTFACE_MODEL_NAME: buffalo_l
+      INSIGHTFACE_DET_SIZE: "320"
+      HSEMOTION_MODEL_NAME: enet_b2_8
+      FACE_MATCH_THRESHOLD: "0.4"
+      FACE_QUALITY_MIN: "0.5"
+      FACE_MAX_EMBEDDINGS_PER_PERSON: "5"
+      EMOTION_EMA_ALPHA: "0.3"
+      EMOTION_SHIFT_MIN_FRAMES: "3"
+      PROCESSING_FPS_TARGET: "2"
+      SCENE_CHANGE_THRESHOLD: "0.03"
+      ENABLE_PIPELINE: "true"
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      JWT_SECRET: dev_secret_nao_usar_em_producao_trocar_imediatamente
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: "1440"
+      CORS_ORIGINS: '["http://localhost:3000"]'
+      SNAPSHOT_DIR: /data/snapshots
+      FACE_CROP_DIR: /data/face_crops
+      MAX_SNAPSHOTS: "10000"
+    volumes:
+      - model_data:/models
+      - app_data:/data
+      - insightface_cache:/root/.insightface
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Sem GPU — roda tudo em CPU
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    image: vipcam-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    volumes:
+      - ./nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  pgdata:
+  redis_data:
+  model_data:
+  app_data:
+  insightface_cache:
