@@ -53,6 +53,13 @@ fail() {
 
 cd "$REPO_DIR" || fail "Diretorio $REPO_DIR nao encontrado"
 
+# Detectar docker compose v1 vs v2
+if docker compose version >/dev/null 2>&1; then
+    DC="docker compose"
+else
+    DC="docker-compose"
+fi
+
 # =============================================================================
 log "Atualizando repositorio..."
 # =============================================================================
@@ -99,16 +106,16 @@ ok "vipcam-frontend construida"
 log "Executando migrations do banco..."
 # =============================================================================
 # Sobe apenas o banco se nao estiver rodando
-docker compose -f "$COMPOSE_FILE" up -d db redis
+$DC -f "$COMPOSE_FILE" up -d db redis
 echo "  Aguardando banco ficar saudavel..."
 for i in $(seq 1 30); do
-    if docker compose -f "$COMPOSE_FILE" exec -T db pg_isready -U vipcam -d vipcam >/dev/null 2>&1; then
+    if $DC -f "$COMPOSE_FILE" exec -T db pg_isready -U vipcam -d vipcam >/dev/null 2>&1; then
         break
     fi
     sleep 1
 done
 
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps \
+$DC -f "$COMPOSE_FILE" run --rm --no-deps \
     -e DATABASE_URL="postgresql+asyncpg://vipcam:d08688ea560642be34fc15@127.0.0.1:5433/vipcam" \
     --entrypoint "" \
     backend \
@@ -119,8 +126,8 @@ ok "Migrations executadas"
 # =============================================================================
 log "Reiniciando containers..."
 # =============================================================================
-docker compose -f "$COMPOSE_FILE" down --remove-orphans
-docker compose -f "$COMPOSE_FILE" up -d
+$DC -f "$COMPOSE_FILE" down --remove-orphans
+$DC -f "$COMPOSE_FILE" up -d
 ok "Containers reiniciados"
 
 # Limpar imagens antigas sem tag
@@ -167,7 +174,7 @@ if $HEALTHY; then
 else
     echo -e "  ${RED}⚠ Backend nao respondeu em 120s${NC}"
     echo "  Ultimas linhas do log:"
-    docker compose -f "$COMPOSE_FILE" logs --tail=20 backend 2>/dev/null | sed 's/^/    /'
+    $DC -f "$COMPOSE_FILE" logs --tail=20 backend 2>/dev/null | sed 's/^/    /'
 fi
 
 # Verificar frontend
@@ -181,10 +188,10 @@ fi
 # Resumo dos containers
 echo ""
 echo -e "${CYAN}=== Status dos containers ===${NC}"
-docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null \
-    || docker compose -f "$COMPOSE_FILE" ps
+$DC -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null \
+    || $DC -f "$COMPOSE_FILE" ps
 
 echo ""
 echo -e "${GREEN}Deploy concluido!${NC}"
 echo -e "  Acesse: ${CYAN}https://v3.sensevip.ia.br${NC}"
-echo -e "  Logs:   ${CYAN}docker compose -f $COMPOSE_FILE logs -f backend${NC}"
+echo -e "  Logs:   ${CYAN}$DC -f $COMPOSE_FILE logs -f backend${NC}"
