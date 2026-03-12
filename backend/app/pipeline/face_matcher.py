@@ -63,14 +63,14 @@ class FaceMatcher:
                 is_new=False,
             )
 
-        # Query pgvector
+        # Query pgvector — use CAST() instead of :: to avoid asyncpg parsing issues
         embedding_str = "[" + ",".join(str(float(x)) for x in embedding) + "]"
         result = await db.execute(
             text("""
                 SELECT person_id,
-                       1 - (embedding <=> :emb::vector) AS similarity
+                       1 - (embedding <=> CAST(:emb AS vector)) AS similarity
                 FROM face_embeddings
-                ORDER BY embedding <=> :emb::vector
+                ORDER BY embedding <=> CAST(:emb AS vector)
                 LIMIT 1
             """),
             {"emb": embedding_str},
@@ -124,7 +124,7 @@ class FaceMatcher:
         await db.execute(
             text("""
                 INSERT INTO face_embeddings (person_id, embedding, quality_score, source_camera_id)
-                VALUES (:pid, :emb::vector, :quality, :cam_id)
+                VALUES (:pid, CAST(:emb AS vector), :quality, :cam_id)
             """),
             {
                 "pid": str(person_id),

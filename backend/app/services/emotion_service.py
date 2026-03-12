@@ -31,9 +31,20 @@ async def get_emotion_timeline(
     person_id: uuid.UUID | None = None,
     bucket_minutes: int = 15,
 ) -> list[EmotionTimelinePoint]:
-    bucket_interval = f"{bucket_minutes} minutes"
+    # Build query dynamically to avoid asyncpg NULL parameter type inference issues
+    where_clauses = ["captured_at BETWEEN :start AND :end"]
+    params: dict = {"bucket": bucket_minutes, "start": start, "end": end}
 
-    query = text("""
+    if camera_id is not None:
+        where_clauses.append("camera_id = :camera_id")
+        params["camera_id"] = str(camera_id)
+    if person_id is not None:
+        where_clauses.append("person_id = :person_id")
+        params["person_id"] = str(person_id)
+
+    where_sql = " AND ".join(where_clauses)
+
+    query = text(f"""
         SELECT
             date_trunc('hour', captured_at) +
             (EXTRACT(minute FROM captured_at)::int / :bucket * interval '1 minute' * :bucket)
@@ -48,23 +59,12 @@ async def get_emotion_timeline(
             AVG(surprise) as surprise,
             AVG(satisfaction_score) as avg_satisfaction
         FROM emotion_records
-        WHERE captured_at BETWEEN :start AND :end
-            AND (:camera_id IS NULL OR camera_id = :camera_id)
-            AND (:person_id IS NULL OR person_id = :person_id)
+        WHERE {where_sql}
         GROUP BY bucket_time
         ORDER BY bucket_time
     """)
 
-    result = await db.execute(
-        query,
-        {
-            "bucket": bucket_minutes,
-            "start": start,
-            "end": end,
-            "camera_id": str(camera_id) if camera_id else None,
-            "person_id": str(person_id) if person_id else None,
-        },
-    )
+    result = await db.execute(query, params)
 
     return [
         EmotionTimelinePoint(
