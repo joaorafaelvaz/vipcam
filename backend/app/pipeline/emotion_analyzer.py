@@ -123,7 +123,12 @@ class EmotionAnalyzer:
                 interpolation=cv2.INTER_LINEAR,
             )
 
-        emotion, raw_scores = self._recognizer.predict_emotions(face_crop, logits=True)
+        # Try with logits=True first, fall back to logits=False
+        try:
+            emotion_label, raw_scores = self._recognizer.predict_emotions(face_crop, logits=True)
+        except TypeError:
+            # Some HSEmotion versions don't support logits param
+            emotion_label, raw_scores = self._recognizer.predict_emotions(face_crop)
 
         # Build scores dict — HSEmotion returns scores in a specific order
         hsemotion_order = [
@@ -133,21 +138,34 @@ class EmotionAnalyzer:
 
         if isinstance(raw_scores, dict):
             scores = {k.lower(): v for k, v in raw_scores.items()}
-        else:
-            # raw_scores is a numpy array — apply softmax for proper probabilities
-            arr = np.array(raw_scores, dtype=np.float64)
+        elif hasattr(raw_scores, '__len__'):
+            # raw_scores is a numpy array or list — apply softmax for proper probabilities
+            arr = np.array(raw_scores, dtype=np.float64).flatten()
             exp_arr = np.exp(arr - np.max(arr))
             probs = exp_arr / exp_arr.sum()
             scores = {}
             for i, name in enumerate(hsemotion_order):
                 scores[name] = float(probs[i]) if i < len(probs) else 0.0
+        else:
+            logger.debug("Unexpected raw_scores format from HSEmotion", type=type(raw_scores).__name__)
+            return self._neutral_result()
 
-        # Ensure scores are proper probabilities
+        # Ensure all emotion keys exist
+        for name in EMOTION_NAMES:
+            if name not in scores:
+                scores[name] = 0.0
+
+        # Normalize to proper probabilities
         total = sum(scores.values())
         if total > 0:
             scores = {k: v / total for k, v in scores.items()}
 
-        dominant = max(scores, key=scores.get)
+        # Use HSEmotion's label as dominant if valid, otherwise pick highest score
+        emotion_str = str(emotion_label).lower().strip()
+        if emotion_str in scores and scores[emotion_str] > 0.01:
+            dominant = emotion_str
+        else:
+            dominant = max(scores, key=scores.get)
         valence = compute_valence(scores)
         arousal = compute_arousal(scores)
         satisfaction = compute_satisfaction(scores)

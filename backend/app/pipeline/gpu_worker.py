@@ -59,36 +59,53 @@ class GPUWorker:
                 [sys.executable, "-c",
                  "from hsemotion.facial_emotions import HSEmotionRecognizer; "
                  "print('ok')"],
-                capture_output=True, timeout=30,
+                capture_output=True, timeout=60, text=True,
             )
-            return result.returncode == 0
-        except Exception:
+            ok = result.returncode == 0
+            if not ok:
+                logger.warning("HSEmotion import test failed",
+                               returncode=result.returncode,
+                               stderr=result.stderr[:500] if result.stderr else "")
+            return ok
+        except Exception as e:
+            logger.warning("HSEmotion import test exception", error=str(e))
             return False
 
     def _load_hsemotion(self):
-        """Try to load HSEmotion: CUDA first, then CPU fallback."""
-        if not self._test_hsemotion_import():
-            logger.warning("HSEmotion import test failed (segfault) — skipping")
-            self._emotion_analyzer = None
-            return
+        """Try to load HSEmotion: detect CUDA availability, then load accordingly."""
+        import torch
 
-        # Try CUDA first
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+        # On CUDA, test import in subprocess first (segfault protection)
+        if device == "cuda:0":
+            if not self._test_hsemotion_import():
+                logger.warning("HSEmotion import test failed on CUDA — trying CPU directly")
+                device = "cpu"
+
+        # Try loading on preferred device
         try:
-            self._emotion_analyzer.load(device="cuda:0")
-            logger.info("HSEmotion loaded on CUDA")
+            self._emotion_analyzer.load(device=device)
+            logger.info("HSEmotion loaded", device=device)
             return
         except Exception as e:
-            logger.warning("HSEmotion CUDA failed, trying CPU", error=str(e))
+            logger.warning("HSEmotion load failed", device=device, error=str(e))
 
-        # Fallback to CPU
-        try:
-            self._emotion_analyzer = EmotionAnalyzer(
-                model_name=settings.hsemotion_model_name,
-            )
-            self._emotion_analyzer.load(device="cpu")
-            logger.info("HSEmotion loaded on CPU (fallback)")
-        except Exception as e:
-            logger.error("HSEmotion CPU also failed — emotions disabled", error=str(e))
+        # If CUDA failed, try CPU
+        if device != "cpu":
+            try:
+                self._emotion_analyzer = EmotionAnalyzer(
+                    model_name=settings.hsemotion_model_name,
+                )
+                self._emotion_analyzer.load(device="cpu")
+                logger.info("HSEmotion loaded on CPU (fallback)")
+                return
+            except Exception as e:
+                logger.error("HSEmotion CPU also failed — emotions disabled", error=str(e))
+
+        # If we get here on CPU and it failed, emotions are disabled
+        if self._emotion_analyzer is None or not hasattr(self._emotion_analyzer, '_recognizer') or self._emotion_analyzer._recognizer is None:
+            logger.error("HSEmotion failed to load — emotions disabled")
             self._emotion_analyzer = None
 
     def _ensure_yolo_model(self):
@@ -179,7 +196,8 @@ class GPUWorker:
             if self._emotion_analyzer is not None:
                 try:
                     emotion = self._emotion_analyzer.analyze(frame, face.bbox)
-                except Exception:
+                except Exception as e:
+                    logger.debug("Emotion analysis failed for face", error=str(e))
                     emotion = self._emotion_analyzer._neutral_result()
             else:
                 emotion = EmotionResult(
