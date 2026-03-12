@@ -14,15 +14,18 @@ WORKDIR /app
 # Copiar pyproject.toml primeiro para cache de deps
 COPY pyproject.toml ./
 
-# Instalar deps com onnxruntime CPU no lugar de GPU
+# PyTorch CPU primeiro (index separado para não afetar outros pacotes)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
+    torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Demais dependências
+RUN pip install --no-cache-dir \
     fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg alembic \
     pydantic pydantic-settings "redis[hiredis]" async-timeout pgvector \
     ultralytics insightface onnxruntime opencv-python-headless \
     hsemotion "timm>=0.9.0,<1.0.0" numpy Pillow python-multipart \
-    httpx "python-jose[cryptography]" "passlib[bcrypt]" structlog lap \
-    torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    httpx "python-jose[cryptography]" "passlib[bcrypt]" structlog lap
 
 COPY . .
 
