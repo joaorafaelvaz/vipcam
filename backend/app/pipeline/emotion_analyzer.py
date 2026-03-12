@@ -85,11 +85,17 @@ class EmotionAnalyzer:
 
         self._device = device
         logger.info("Loading HSEmotion model...", model=self.model_name, device=device)
-        # PyTorch 2.6+ defaults weights_only=True which breaks hsemotion loading
+
+        # Monkey-patch torch.load to:
+        # 1. Force weights_only=False (PyTorch 2.6+ defaults to True, breaks hsemotion)
+        # 2. Force map_location=device (model .pt was saved on CUDA, fails on CPU otherwise)
         _original_load = torch.load
-        torch.load = lambda *args, **kwargs: _original_load(
-            *args, **{**kwargs, "weights_only": False},
-        )
+        def _patched_load(*args, **kwargs):
+            kwargs.setdefault("weights_only", False)
+            kwargs.setdefault("map_location", device)
+            return _original_load(*args, **kwargs)
+
+        torch.load = _patched_load
         try:
             self._recognizer = HSEmotionRecognizer(
                 model_name=self.model_name,
