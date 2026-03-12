@@ -23,6 +23,13 @@ async def get_occupancy(
     )
 
 
+@router.get("/dashboard")
+async def get_dashboard_summary(
+    db: AsyncSession = Depends(get_db),
+):
+    return await analytics_service.get_dashboard_summary(db)
+
+
 @router.get("/daily")
 async def get_daily_summary(
     day: date | None = None,

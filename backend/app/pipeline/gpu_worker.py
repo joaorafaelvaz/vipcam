@@ -1,5 +1,7 @@
+import subprocess
+import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import structlog
@@ -50,6 +52,45 @@ class GPUWorker:
         )
         self._loaded = False
 
+    def _test_hsemotion_import(self) -> bool:
+        """Test HSEmotion import in subprocess to detect segfaults safely."""
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "from hsemotion.facial_emotions import HSEmotionRecognizer; "
+                 "print('ok')"],
+                capture_output=True, timeout=30,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _load_hsemotion(self):
+        """Try to load HSEmotion: CUDA first, then CPU fallback."""
+        if not self._test_hsemotion_import():
+            logger.warning("HSEmotion import test failed (segfault) — skipping")
+            self._emotion_analyzer = None
+            return
+
+        # Try CUDA first
+        try:
+            self._emotion_analyzer.load(device="cuda:0")
+            logger.info("HSEmotion loaded on CUDA")
+            return
+        except Exception as e:
+            logger.warning("HSEmotion CUDA failed, trying CPU", error=str(e))
+
+        # Fallback to CPU
+        try:
+            self._emotion_analyzer = EmotionAnalyzer(
+                model_name=settings.hsemotion_model_name,
+            )
+            self._emotion_analyzer.load(device="cpu")
+            logger.info("HSEmotion loaded on CPU (fallback)")
+        except Exception as e:
+            logger.error("HSEmotion CPU also failed — emotions disabled", error=str(e))
+            self._emotion_analyzer = None
+
     def load_models(self):
         if self._loaded:
             return
@@ -70,26 +111,8 @@ class GPUWorker:
             logger.error("Failed to load InsightFace recognizer", error=str(e))
             self._recognizer = None
 
-        # HSEmotion causes segfault in some environments — load in subprocess to test
-        import subprocess
-        import sys
-        test_result = subprocess.run(
-            [sys.executable, "-c", "from hsemotion.facial_emotions import HSEmotionRecognizer"],
-            capture_output=True, timeout=30,
-        )
-        if test_result.returncode != 0:
-            logger.warning(
-                "HSEmotion import test failed (likely segfault) — skipping emotion analyzer",
-                returncode=test_result.returncode,
-            )
-            self._emotion_analyzer = None
-        else:
-            try:
-                self._emotion_analyzer.load()
-                logger.info("HSEmotion analyzer loaded")
-            except Exception as e:
-                logger.error("Failed to load HSEmotion analyzer", error=str(e))
-                self._emotion_analyzer = None
+        # HSEmotion: try CUDA → CPU → disabled
+        self._load_hsemotion()
 
         self._loaded = True
 

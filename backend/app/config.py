@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     hsemotion_model_name: str = "enet_b2_8"
 
     # Face matching
-    face_match_threshold: float = 0.6
-    face_quality_min: float = 0.7
+    face_match_threshold: float = 0.4
+    face_quality_min: float = 0.5
     face_max_embeddings_per_person: int = 5
 
     # Emotion

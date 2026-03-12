@@ -77,12 +77,14 @@ class EmotionAnalyzer:
     def __init__(self, model_name: str = "enet_b2_8"):
         self.model_name = model_name
         self._recognizer = None
+        self._device = None
 
-    def load(self):
+    def load(self, device: str = "cuda:0"):
         import torch
         from hsemotion.facial_emotions import HSEmotionRecognizer
 
-        logger.info("Loading HSEmotion model...", model=self.model_name)
+        self._device = device
+        logger.info("Loading HSEmotion model...", model=self.model_name, device=device)
         # PyTorch 2.6+ defaults weights_only=True which breaks hsemotion loading
         _original_load = torch.load
         torch.load = lambda *args, **kwargs: _original_load(
@@ -91,11 +93,11 @@ class EmotionAnalyzer:
         try:
             self._recognizer = HSEmotionRecognizer(
                 model_name=self.model_name,
-                device="cuda:0",
+                device=device,
             )
         finally:
             torch.load = _original_load
-        logger.info("HSEmotion loaded successfully")
+        logger.info("HSEmotion loaded successfully", device=device)
 
     def analyze(self, frame: np.ndarray, face_bbox: list[float]) -> EmotionResult:
         if self._recognizer is None:
@@ -110,10 +112,20 @@ class EmotionAnalyzer:
         if face_crop.size == 0:
             return self._neutral_result()
 
+        # Resize to a decent size for better emotion recognition
+        min_size = 64
+        fh, fw = face_crop.shape[:2]
+        if fh < min_size or fw < min_size:
+            scale = max(min_size / fh, min_size / fw)
+            face_crop = cv2.resize(
+                face_crop,
+                (int(fw * scale), int(fh * scale)),
+                interpolation=cv2.INTER_LINEAR,
+            )
+
         emotion, raw_scores = self._recognizer.predict_emotions(face_crop, logits=True)
 
         # Build scores dict — HSEmotion returns scores in a specific order
-        # Map the raw scores to our standard emotion names
         hsemotion_order = [
             "anger", "contempt", "disgust", "fear",
             "happiness", "neutral", "sadness", "surprise",
@@ -122,12 +134,15 @@ class EmotionAnalyzer:
         if isinstance(raw_scores, dict):
             scores = {k.lower(): v for k, v in raw_scores.items()}
         else:
-            # raw_scores is a numpy array
+            # raw_scores is a numpy array — apply softmax for proper probabilities
+            arr = np.array(raw_scores, dtype=np.float64)
+            exp_arr = np.exp(arr - np.max(arr))
+            probs = exp_arr / exp_arr.sum()
             scores = {}
             for i, name in enumerate(hsemotion_order):
-                scores[name] = float(raw_scores[i]) if i < len(raw_scores) else 0.0
+                scores[name] = float(probs[i]) if i < len(probs) else 0.0
 
-        # Normalize to probabilities
+        # Ensure scores are proper probabilities
         total = sum(scores.values())
         if total > 0:
             scores = {k: v / total for k, v in scores.items()}
