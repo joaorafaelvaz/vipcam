@@ -70,12 +70,26 @@ class GPUWorker:
             logger.error("Failed to load InsightFace recognizer", error=str(e))
             self._recognizer = None
 
-        try:
-            self._emotion_analyzer.load()
-            logger.info("HSEmotion analyzer loaded")
-        except Exception as e:
-            logger.error("Failed to load HSEmotion analyzer", error=str(e))
+        # HSEmotion causes segfault in some environments — load in subprocess to test
+        import subprocess
+        import sys
+        test_result = subprocess.run(
+            [sys.executable, "-c", "from hsemotion.facial_emotions import HSEmotionRecognizer"],
+            capture_output=True, timeout=30,
+        )
+        if test_result.returncode != 0:
+            logger.warning(
+                "HSEmotion import test failed (likely segfault) — skipping emotion analyzer",
+                returncode=test_result.returncode,
+            )
             self._emotion_analyzer = None
+        else:
+            try:
+                self._emotion_analyzer.load()
+                logger.info("HSEmotion analyzer loaded")
+            except Exception as e:
+                logger.error("Failed to load HSEmotion analyzer", error=str(e))
+                self._emotion_analyzer = None
 
         self._loaded = True
 
@@ -111,14 +125,21 @@ class GPUWorker:
         if self._recognizer is not None:
             face_datas = self._recognizer.analyze(frame)
 
-        # 3. For each face, run emotion analysis
+        # 3. For each face, run emotion analysis (or use neutral fallback)
         face_results: list[FaceResult] = []
         for face in face_datas:
-            emotion = None
             if self._emotion_analyzer is not None:
-                emotion = self._emotion_analyzer.analyze(frame, face.bbox)
-            if emotion is None:
-                continue
+                try:
+                    emotion = self._emotion_analyzer.analyze(frame, face.bbox)
+                except Exception:
+                    emotion = self._emotion_analyzer._neutral_result()
+            else:
+                emotion = EmotionResult(
+                    anger=0, contempt=0, disgust=0, fear=0,
+                    happiness=0, neutral=1.0, sadness=0, surprise=0,
+                    dominant_emotion="neutral",
+                    valence=0.0, arousal=0.1, satisfaction_score=5.0,
+                )
             face_results.append(
                 FaceResult(
                     person_id=None,  # Will be filled by pipeline manager
