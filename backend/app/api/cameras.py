@@ -16,21 +16,13 @@ router = APIRouter()
 
 
 import os
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;10000000")
 os.environ.setdefault("OPENCV_FFMPEG_READ_ATTEMPTS", "4096")
 
 
-def _grab_frame(rtsp_url: str, timeout_ms: int = 10000) -> bytes:
+def _grab_frame(rtsp_url: str) -> bytes:
     """Grab a single JPEG frame from an RTSP URL (runs in thread)."""
-    # Force TCP transport and set stimeout (microseconds) for RTSP via FFMPEG options
-    url_with_opts = rtsp_url
-    sep = "&" if "?" in rtsp_url else "?"
-    if "rtsp_transport" not in rtsp_url:
-        url_with_opts += f"{sep}rtsp_transport=tcp"
-        sep = "&"
-    if "stimeout" not in rtsp_url:
-        url_with_opts += f"{sep}stimeout={timeout_ms * 1000}"
-
-    cap = cv2.VideoCapture(url_with_opts, cv2.CAP_FFMPEG)
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     try:
         if not cap.isOpened():
             raise ConnectionError(f"Cannot open RTSP stream: {rtsp_url}")
