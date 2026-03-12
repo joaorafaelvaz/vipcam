@@ -91,10 +91,34 @@ class GPUWorker:
             logger.error("HSEmotion CPU also failed — emotions disabled", error=str(e))
             self._emotion_analyzer = None
 
+    def _ensure_yolo_model(self):
+        """Auto-download YOLO model if not found at configured path."""
+        import os
+        model_path = settings.yolo_model_path
+        if os.path.exists(model_path):
+            return model_path
+        # If path doesn't exist, use just the filename so ultralytics auto-downloads
+        basename = os.path.basename(model_path)
+        logger.info("YOLO model not found at configured path, will auto-download", path=model_path, fallback=basename)
+        # Try to save to configured directory if it exists
+        model_dir = os.path.dirname(model_path)
+        if model_dir and os.path.isdir(model_dir):
+            from ultralytics import YOLO
+            model = YOLO(basename)
+            return basename
+        return basename
+
     def load_models(self):
         if self._loaded:
             return
-        logger.info("Loading GPU models...")
+        logger.info("Loading models...")
+
+        # Ensure YOLO model exists (auto-download if needed)
+        try:
+            yolo_path = self._ensure_yolo_model()
+            self._detector.model_path = yolo_path
+        except Exception as e:
+            logger.warning("YOLO model download failed", error=str(e))
 
         # Load each model independently so a single failure doesn't kill the process
         try:
@@ -116,21 +140,22 @@ class GPUWorker:
 
         self._loaded = True
 
-        try:
-            import torch
-            if torch.cuda.is_available():
+        import torch
+        device = "CUDA" if torch.cuda.is_available() else "CPU"
+        logger.info(
+            "All models loaded",
+            device=device,
+            detector=self._detector is not None,
+            recognizer=self._recognizer is not None,
+            emotion_analyzer=self._emotion_analyzer is not None,
+        )
+        if torch.cuda.is_available():
+            try:
                 allocated = torch.cuda.memory_allocated() / 1024**3
                 reserved = torch.cuda.memory_reserved() / 1024**3
-                logger.info(
-                    "GPU models loaded",
-                    vram_allocated_gb=f"{allocated:.2f}",
-                    vram_reserved_gb=f"{reserved:.2f}",
-                    detector=self._detector is not None,
-                    recognizer=self._recognizer is not None,
-                    emotion_analyzer=self._emotion_analyzer is not None,
-                )
-        except Exception:
-            logger.info("GPU models loaded (VRAM info unavailable)")
+                logger.info("VRAM usage", allocated_gb=f"{allocated:.2f}", reserved_gb=f"{reserved:.2f}")
+            except Exception:
+                pass
 
     def process_frame(self, camera_id: str, frame: np.ndarray) -> FrameResult:
         if not self._loaded:

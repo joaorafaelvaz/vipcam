@@ -23,13 +23,18 @@ class PersonDetector:
         self._model = None
 
     def load(self):
+        import torch
         from ultralytics import YOLO
 
-        logger.info("Loading YOLOv8x model...", path=self.model_path)
+        self._device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self._use_half = self._device != "cpu"
+
+        logger.info("Loading YOLOv8x model...", path=self.model_path, device=self._device)
         self._model = YOLO(self.model_path)
-        self._model.to("cuda:0")
-        self._model.fuse()
-        logger.info("YOLOv8x loaded successfully")
+        self._model.to(self._device)
+        if self._device != "cpu":
+            self._model.fuse()
+        logger.info("YOLOv8x loaded successfully", device=self._device)
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         if self._model is None:
@@ -41,9 +46,9 @@ class PersonDetector:
             conf=self.conf,
             iou=0.45,
             imgsz=self.imgsz,
-            half=True,  # FP16
+            half=self._use_half,
             verbose=False,
-            device="cuda:0",
+            device=self._device,
         )
 
         detections = []
@@ -69,9 +74,9 @@ class PersonDetector:
             conf=self.conf,
             iou=0.45,
             imgsz=self.imgsz,
-            half=True,
+            half=self._use_half,
             verbose=False,
-            device="cuda:0",
+            device=self._device,
             persist=True,
             tracker="bytetrack.yaml",
         )

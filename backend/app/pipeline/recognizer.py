@@ -26,15 +26,24 @@ class FaceRecognizer:
         self._app = None
 
     def load(self):
+        import onnxruntime
         from insightface.app import FaceAnalysis
 
-        logger.info("Loading InsightFace model...", model=self.model_name)
+        available = onnxruntime.get_available_providers()
+        if "CUDAExecutionProvider" in available:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            ctx_id = 0
+        else:
+            providers = ["CPUExecutionProvider"]
+            ctx_id = -1
+
+        logger.info("Loading InsightFace model...", model=self.model_name, providers=providers)
         self._app = FaceAnalysis(
             name=self.model_name,
-            providers=["CUDAExecutionProvider"],
+            providers=providers,
         )
-        self._app.prepare(ctx_id=0, det_size=self.det_size)
-        logger.info("InsightFace loaded successfully")
+        self._app.prepare(ctx_id=ctx_id, det_size=self.det_size)
+        logger.info("InsightFace loaded successfully", providers=providers)
 
     def analyze(self, frame: np.ndarray) -> list[FaceData]:
         if self._app is None:
