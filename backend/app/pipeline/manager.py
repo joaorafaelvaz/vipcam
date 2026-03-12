@@ -1,9 +1,11 @@
 import asyncio
 import json
+import os
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -108,7 +110,7 @@ class PipelineManager:
                     )
 
                     # Run face matching and persistence asynchronously
-                    await self._process_result(frame_result)
+                    await self._process_result(frame_result, frame)
 
                 except Exception as e:
                     logger.error("Pipeline processing error", camera_id=camera_id, error=str(e))
@@ -116,7 +118,7 @@ class PipelineManager:
             if not processed_any:
                 await asyncio.sleep(0.05)  # 50ms idle sleep
 
-    async def _process_result(self, result: FrameResult):
+    async def _process_result(self, result: FrameResult, frame: np.ndarray):
         now = datetime.now(timezone.utc)
 
         async with async_session() as db:
@@ -149,10 +151,17 @@ class PipelineManager:
                     person_id = person.id
                     face_result.person_id = str(person_id)
 
-                    # Register embedding
+                    # Save face crop and set thumbnail for new person
+                    crop_path = self._save_face_crop(frame, face_result.face_data.bbox, person_id)
+                    if crop_path:
+                        person.thumbnail_path = crop_path
+
+                    # Register embedding with bbox and crop path
                     await self._face_matcher.register_embedding(
                         db, person_id, embedding, quality,
                         camera_id=uuid.UUID(result.camera_id),
+                        face_bbox=face_result.face_data.bbox,
+                        image_path=crop_path,
                     )
                 else:
                     # Update last seen
@@ -161,6 +170,16 @@ class PipelineManager:
                         .where(Person.id == person_id)
                         .values(last_seen_at=now)
                     )
+
+                    # Update thumbnail if current quality is better (every ~50 frames)
+                    if quality > 0.85 and time.monotonic() % 50 < 1:
+                        crop_path = self._save_face_crop(frame, face_result.face_data.bbox, person_id)
+                        if crop_path:
+                            await db.execute(
+                                update(Person)
+                                .where(Person.id == person_id)
+                                .values(thumbnail_path=crop_path)
+                            )
 
                 # Smooth emotions
                 smoothed, shifted = self._smoother.smooth(
@@ -202,6 +221,45 @@ class PipelineManager:
 
         # Publish to Redis for WebSocket
         await self._publish_result(result)
+
+    def _save_face_crop(
+        self, frame: np.ndarray, bbox: list[float], person_id: uuid.UUID
+    ) -> str | None:
+        """Crop face from frame, save to disk, return relative path."""
+        try:
+            h, w = frame.shape[:2]
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+
+            # Add 30% padding around the face for a nicer crop
+            pad_w = int((x2 - x1) * 0.3)
+            pad_h = int((y2 - y1) * 0.3)
+            x1 = max(0, x1 - pad_w)
+            y1 = max(0, y1 - pad_h)
+            x2 = min(w, x2 + pad_w)
+            y2 = min(h, y2 + pad_h)
+
+            face_crop = frame[y1:y2, x1:x2]
+            if face_crop.size == 0:
+                return None
+
+            # Resize to standard thumbnail size (200x200)
+            face_crop = cv2.resize(face_crop, (200, 200), interpolation=cv2.INTER_AREA)
+
+            # Save with person_id-based path: /data/face_crops/<first2>/<person_id>.jpg
+            pid_str = str(person_id)
+            subdir = pid_str[:2]
+            crop_dir = Path(settings.face_crop_dir) / subdir
+            crop_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = f"{pid_str}.jpg"
+            filepath = crop_dir / filename
+            cv2.imwrite(str(filepath), face_crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
+
+            # Return relative path from face_crop_dir root
+            return f"{subdir}/{filename}"
+        except Exception as e:
+            logger.debug("Failed to save face crop", person_id=str(person_id), error=str(e))
+            return None
 
     async def _cache_snapshot(self, camera_id: str, frame: np.ndarray):
         try:

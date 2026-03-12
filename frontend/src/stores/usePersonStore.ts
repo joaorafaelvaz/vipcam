@@ -10,6 +10,8 @@ interface PersonState {
   search: string;
   fetchPersons: (search?: string) => Promise<void>;
   updatePerson: (id: string, data: Partial<Person>) => Promise<void>;
+  mergePersons: (sourceId: string, targetId: string) => Promise<Person>;
+  deletePerson: (id: string) => Promise<void>;
   setSearch: (search: string) => void;
 }
 
@@ -35,6 +37,25 @@ export const usePersonStore = create<PersonState>((set, get) => ({
     set({
       persons: get().persons.map((p) => (p.id === id ? updated : p)),
     });
+  },
+
+  mergePersons: async (sourceId, targetId) => {
+    const merged = await api.post<Person>("/persons/merge", {
+      source_id: sourceId,
+      target_id: targetId,
+    });
+    // Remove source, update target in list
+    set({
+      persons: get()
+        .persons.filter((p) => p.id !== sourceId)
+        .map((p) => (p.id === targetId ? merged : p)),
+    });
+    return merged;
+  },
+
+  deletePerson: async (id) => {
+    await api.del(`/persons/${id}`);
+    set({ persons: get().persons.filter((p) => p.id !== id) });
   },
 
   setSearch: (search) => set({ search }),

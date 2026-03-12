@@ -1,8 +1,11 @@
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.session import get_db
 from app.schemas.emotion import EmotionRead
 from app.schemas.person import PersonCreate, PersonMerge, PersonRead, PersonUpdate
@@ -31,6 +34,22 @@ async def create_person(
     db: AsyncSession = Depends(get_db),
 ):
     return await person_service.create_person(db, data)
+
+
+@router.get("/{person_id}/thumbnail")
+async def get_person_thumbnail(
+    person_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    person = await person_service.get_person(db, person_id)
+    if not person or not person.thumbnail_path:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    filepath = Path(settings.face_crop_dir) / person.thumbnail_path
+    if not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Thumbnail file missing")
+
+    return FileResponse(filepath, media_type="image/jpeg")
 
 
 @router.get("/{person_id}", response_model=PersonRead)

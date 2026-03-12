@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from collections import OrderedDict
@@ -95,9 +96,12 @@ class FaceMatcher:
         embedding: np.ndarray,
         quality: float,
         camera_id: uuid.UUID | None = None,
+        face_bbox: list[float] | None = None,
+        image_path: str | None = None,
     ):
         """Store a new embedding, replacing lowest quality if at max."""
         embedding_str = "[" + ",".join(str(float(x)) for x in embedding) + "]"
+        bbox_json = json.dumps(face_bbox) if face_bbox else None
 
         # Count existing embeddings
         count_result = await db.execute(
@@ -123,14 +127,18 @@ class FaceMatcher:
 
         await db.execute(
             text("""
-                INSERT INTO face_embeddings (person_id, embedding, quality_score, source_camera_id)
-                VALUES (:pid, CAST(:emb AS vector), :quality, :cam_id)
+                INSERT INTO face_embeddings
+                    (person_id, embedding, quality_score, source_camera_id, face_bbox, image_path)
+                VALUES (:pid, CAST(:emb AS vector), :quality, :cam_id,
+                        CAST(:bbox AS jsonb), :img_path)
             """),
             {
                 "pid": str(person_id),
                 "emb": embedding_str,
                 "quality": quality,
                 "cam_id": str(camera_id) if camera_id else None,
+                "bbox": bbox_json,
+                "img_path": image_path,
             },
         )
 
