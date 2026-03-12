@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import structlog
@@ -19,6 +20,11 @@ async def lifespan(app: FastAPI):
     await get_redis()
     logger.info("Redis connected")
 
+    # Start Redis → WebSocket bridge (pub/sub listener)
+    from app.api.ws import redis_listener
+
+    redis_listener_task = asyncio.create_task(redis_listener())
+
     # Start pipeline if enabled (non-blocking — API works even if pipeline fails)
     if settings.enable_pipeline:
         try:
@@ -32,6 +38,12 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    redis_listener_task.cancel()
+    try:
+        await redis_listener_task
+    except asyncio.CancelledError:
+        pass
+
     if settings.enable_pipeline:
         from app.pipeline.manager import pipeline_manager
 

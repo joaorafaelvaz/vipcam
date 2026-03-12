@@ -51,22 +51,25 @@ manager = ConnectionManager()
 
 async def redis_listener():
     """Background task that listens to Redis pub/sub and broadcasts to WebSocket clients."""
-    try:
-        pubsub = await redis_service.subscribe("vipcam:frames:*")
-        async for message in pubsub.listen():
-            if message["type"] == "pmessage" or message["type"] == "message":
-                data = message.get("data", "")
-                if isinstance(data, str):
-                    try:
-                        parsed = json.loads(data)
-                        camera_id = parsed.get("camera_id", "")
-                        await manager.broadcast(str(camera_id), data)
-                    except json.JSONDecodeError:
-                        pass
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        logger.error("Redis listener error", error=str(e))
+    while True:
+        try:
+            pubsub = await redis_service.psubscribe("vipcam:frames:*")
+            logger.info("Redis pub/sub listener started")
+            async for message in pubsub.listen():
+                if message["type"] == "pmessage":
+                    data = message.get("data", "")
+                    if isinstance(data, str):
+                        try:
+                            parsed = json.loads(data)
+                            camera_id = parsed.get("camera_id", "")
+                            await manager.broadcast(str(camera_id), data)
+                        except json.JSONDecodeError:
+                            pass
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.error("Redis listener error, reconnecting in 3s", error=str(e))
+            await asyncio.sleep(3)
 
 
 @router.websocket("/ws/live")

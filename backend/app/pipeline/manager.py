@@ -5,6 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+import cv2
 import numpy as np
 import structlog
 from sqlalchemy import text, update
@@ -95,6 +96,9 @@ class PipelineManager:
                 processed_any = True
 
                 try:
+                    # Store latest frame as JPEG snapshot in Redis (for /cameras/{id}/snapshot)
+                    await self._cache_snapshot(camera_id, frame)
+
                     # Run GPU inference in thread pool (single thread = serial GPU access)
                     frame_result: FrameResult = await loop.run_in_executor(
                         self._executor,
@@ -198,6 +202,13 @@ class PipelineManager:
 
         # Publish to Redis for WebSocket
         await self._publish_result(result)
+
+    async def _cache_snapshot(self, camera_id: str, frame: np.ndarray):
+        try:
+            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            await redis_service.set_snapshot(camera_id, jpeg.tobytes(), ttl=10)
+        except Exception as e:
+            logger.debug("Failed to cache snapshot", camera_id=camera_id, error=str(e))
 
     def _avg_satisfaction(self, result: FrameResult) -> float | None:
         scores = [f.emotions.satisfaction_score for f in result.faces if f.emotions]

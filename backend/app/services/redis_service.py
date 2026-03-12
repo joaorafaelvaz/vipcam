@@ -37,6 +37,12 @@ class RedisService:
         await pubsub.subscribe(*channels)
         return pubsub
 
+    async def psubscribe(self, *patterns: str):
+        client = await self._get_client()
+        pubsub = client.pubsub()
+        await pubsub.psubscribe(*patterns)
+        return pubsub
+
     async def set_cached(self, key: str, value: dict, ttl: int = 60) -> None:
         client = await self._get_client()
         await client.setex(key, ttl, json.dumps(value, default=str))

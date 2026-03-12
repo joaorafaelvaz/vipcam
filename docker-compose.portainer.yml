@@ -69,7 +69,7 @@ services:
       EMOTION_SHIFT_MIN_FRAMES: "3"
       PROCESSING_FPS_TARGET: "5"
       SCENE_CHANGE_THRESHOLD: "0.03"
-      ENABLE_PIPELINE: "false"
+      ENABLE_PIPELINE: "true"
       API_HOST: "0.0.0.0"
       API_PORT: "8001"
       JWT_SECRET: d08688ea560642be34fc15635b6e0b4613921c3a0653cb7e20fd4e9b96cd7cab
@@ -82,6 +82,7 @@ services:
     volumes:
       - model_data:/models
       - app_data:/data
+      - insightface_cache:/root/.insightface
     depends_on:
       db:
         condition: service_healthy
@@ -110,6 +111,7 @@ volumes:
   redis_data:
   model_data:
   app_data:
+  insightface_cache:
 
 networks:
   vipcam:
