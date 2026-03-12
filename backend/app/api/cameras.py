@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 import os
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;10000000")
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;10000000|tls_verify;0")
 os.environ.setdefault("OPENCV_FFMPEG_READ_ATTEMPTS", "4096")
 
 

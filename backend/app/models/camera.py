@@ -20,7 +20,8 @@ class Camera(Base):
     rtsp_url: Mapped[str] = mapped_column(String(500), nullable=False)
     franchise_unit_id: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    resolution: Mapped[str] = mapped_column(String(20), default="1280x720", server_default="1280x720")
+    resolution: Mapped[str] = mapped_column(String(20), default="1920x1080", server_default="1920x1080")
+    rtsp_protocol: Mapped[str] = mapped_column(String(10), default="rtsp", server_default="rtsp")
     fps_target: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(),

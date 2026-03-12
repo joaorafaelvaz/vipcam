@@ -147,6 +147,8 @@ export default function CamerasPage() {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [rtspUrl, setRtspUrl] = useState("");
+  const [rtspProtocol, setRtspProtocol] = useState("rtsp");
+  const [resolution, setResolution] = useState("1920x1080");
   const [fpsTarget, setFpsTarget] = useState(5);
 
   useEffect(() => {
@@ -163,12 +165,16 @@ export default function CamerasPage() {
         name,
         location: location || null,
         rtsp_url: rtspUrl,
+        rtsp_protocol: rtspProtocol,
+        resolution,
         fps_target: fpsTarget,
       });
       setShowForm(false);
       setName("");
       setLocation("");
       setRtspUrl("");
+      setRtspProtocol("rtsp");
+      setResolution("1920x1080");
       setFpsTarget(5);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Erro ao salvar camera");
@@ -195,46 +201,105 @@ export default function CamerasPage() {
               <h3 className="text-sm font-medium">Nova Camera</h3>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Nome</label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
-                    placeholder="Salao Principal"
-                  />
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Nome</label>
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+                      placeholder="Salao Principal"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Localizacao</label>
+                    <input
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+                      placeholder="Unidade Centro"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Localizacao</label>
-                  <input
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
-                    placeholder="Unidade Centro"
-                  />
+
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Protocolo</label>
+                    <select
+                      value={rtspProtocol}
+                      onChange={(e) => {
+                        setRtspProtocol(e.target.value);
+                        // Auto-adjust placeholder when switching protocol
+                        if (e.target.value === "rtsps" && !rtspUrl) {
+                          setRtspUrl("rtsps://");
+                        }
+                      }}
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+                    >
+                      <option value="rtsp">RTSP</option>
+                      <option value="rtsps">RTSPS (Ubiquiti)</option>
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-xs text-zinc-400 mb-1">URL do Stream</label>
+                    <input
+                      value={rtspUrl}
+                      onChange={(e) => setRtspUrl(e.target.value)}
+                      required
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+                      placeholder={
+                        rtspProtocol === "rtsps"
+                          ? "rtsps://192.168.1.100:7441/abcdef123456_2"
+                          : "rtsp://admin:senha@192.168.0.101:554/onvif1"
+                      }
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">URL RTSP</label>
-                  <input
-                    value={rtspUrl}
-                    onChange={(e) => setRtspUrl(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
-                    placeholder="rtsp://admin:senha@192.168.0.101:554/onvif1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">FPS Target</label>
-                  <input
-                    type="number"
-                    value={fpsTarget}
-                    onChange={(e) => setFpsTarget(Number(e.target.value))}
-                    min={1}
-                    max={30}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
-                  />
+
+                {rtspProtocol === "rtsps" && (
+                  <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2">
+                    <p className="text-[11px] text-blue-400 font-medium mb-1">Ubiquiti / UniFi Protect</p>
+                    <p className="text-[10px] text-blue-400/70">
+                      URL padrao: <code className="bg-blue-500/10 px-1 rounded">rtsps://IP:7441/CAMERA_ID_2</code> (Full HD) ou <code className="bg-blue-500/10 px-1 rounded">_0</code> (4K).
+                      Obtenha o ID da camera no UniFi Protect &gt; Camera &gt; Settings &gt; RTSP.
+                      O certificado SSL e aceito automaticamente.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Resolucao</label>
+                    <select
+                      value={resolution}
+                      onChange={(e) => setResolution(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+                    >
+                      <option value="3840x2160">4K (3840x2160)</option>
+                      <option value="2560x1440">2K (2560x1440)</option>
+                      <option value="1920x1080">Full HD (1920x1080)</option>
+                      <option value="1280x720">HD (1280x720)</option>
+                      <option value="640x360">SD (640x360)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">FPS Target</label>
+                    <input
+                      type="number"
+                      value={fpsTarget}
+                      onChange={(e) => setFpsTarget(Number(e.target.value))}
+                      min={1}
+                      max={30}
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <p className="text-[10px] text-zinc-500 pb-2">
+                      GPU: 5-10 FPS | CPU: 1-3 FPS
+                    </p>
+                  </div>
                 </div>
                 {formError && (
                   <div className="col-span-2 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-400">
@@ -265,6 +330,9 @@ export default function CamerasPage() {
                     Localizacao
                   </th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Resolucao
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -286,6 +354,12 @@ export default function CamerasPage() {
                     </td>
                     <td className="px-5 py-3 text-zinc-400">
                       {camera.location || "—"}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="text-zinc-300 text-xs">{camera.resolution}</div>
+                      <div className="text-[10px] text-zinc-600 uppercase">
+                        {camera.rtsp_protocol === "rtsps" ? "RTSPS" : "RTSP"}
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       <Badge variant={camera.is_active ? "success" : "default"}>

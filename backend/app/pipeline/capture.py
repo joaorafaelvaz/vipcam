@@ -9,8 +9,11 @@ import structlog
 
 logger = structlog.get_logger()
 
-# Force TCP transport for RTSP
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+# Force TCP transport for RTSP; tls_verify=0 for rtsps:// with self-signed certs (Ubiquiti)
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    "rtsp_transport;tcp|tls_verify;0|allowed_media_types;video",
+)
 
 
 class RTSPCapture:

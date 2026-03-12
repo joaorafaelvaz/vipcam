@@ -3,6 +3,7 @@ export interface Camera {
   name: string;
   location: string | null;
   rtsp_url: string;
+  rtsp_protocol: string;
   franchise_unit_id: number | null;
   is_active: boolean;
   resolution: string;
