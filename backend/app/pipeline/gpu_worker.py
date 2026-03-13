@@ -52,61 +52,71 @@ class GPUWorker:
         )
         self._loaded = False
 
-    def _test_hsemotion_import(self) -> bool:
-        """Test HSEmotion import in subprocess to detect segfaults safely."""
+    def _test_hsemotion_load(self, device: str) -> bool:
+        """Test HSEmotion load in subprocess to detect segfaults safely.
+
+        Returns True if HSEmotion can be loaded on the given device without crashing.
+        """
+        test_code = (
+            "import torch; "
+            f"device = '{device}'; "
+            "_orig = torch.load; "
+            "def _patched(*a, **kw): kw.setdefault('weights_only', False); kw.setdefault('map_location', device); return _orig(*a, **kw)\n"
+            "torch.load = _patched; "
+            "from hsemotion.facial_emotions import HSEmotionRecognizer; "
+            f"r = HSEmotionRecognizer(model_name='{settings.hsemotion_model_name}', device='{device}'); "
+            "print('ok')"
+        )
         try:
             result = subprocess.run(
-                [sys.executable, "-c",
-                 "from hsemotion.facial_emotions import HSEmotionRecognizer; "
-                 "print('ok')"],
-                capture_output=True, timeout=60, text=True,
+                [sys.executable, "-c", test_code],
+                capture_output=True, timeout=120, text=True,
             )
-            ok = result.returncode == 0
+            ok = result.returncode == 0 and "ok" in result.stdout
             if not ok:
-                logger.warning("HSEmotion import test failed",
+                logger.warning("HSEmotion subprocess test failed",
+                               device=device,
                                returncode=result.returncode,
                                stderr=result.stderr[:500] if result.stderr else "")
+            else:
+                logger.info("HSEmotion subprocess test passed", device=device)
             return ok
         except Exception as e:
-            logger.warning("HSEmotion import test exception", error=str(e))
+            logger.warning("HSEmotion subprocess test exception", device=device, error=str(e))
             return False
 
     def _load_hsemotion(self):
-        """Try to load HSEmotion: detect CUDA availability, then load accordingly."""
+        """Try to load HSEmotion: test in subprocess first to avoid segfaults killing the main process."""
         import torch
 
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-        # On CUDA, test import in subprocess first (segfault protection)
-        if device == "cuda:0":
-            if not self._test_hsemotion_import():
-                logger.warning("HSEmotion import test failed on CUDA — trying CPU directly")
-                device = "cpu"
-
-        # Try loading on preferred device
-        try:
-            self._emotion_analyzer.load(device=device)
-            logger.info("HSEmotion loaded", device=device)
-            return
-        except Exception as e:
-            logger.warning("HSEmotion load failed", device=device, error=str(e))
-
-        # If CUDA failed, try CPU
-        if device != "cpu":
+        # Test in subprocess first — segfaults kill the subprocess, not us
+        if self._test_hsemotion_load(device):
             try:
-                self._emotion_analyzer = EmotionAnalyzer(
-                    model_name=settings.hsemotion_model_name,
-                )
-                self._emotion_analyzer.load(device="cpu")
-                logger.info("HSEmotion loaded on CPU (fallback)")
+                self._emotion_analyzer.load(device=device)
+                logger.info("HSEmotion loaded", device=device)
                 return
             except Exception as e:
-                logger.error("HSEmotion CPU also failed — emotions disabled", error=str(e))
+                logger.warning("HSEmotion load failed after subprocess test passed", device=device, error=str(e))
 
-        # If we get here on CPU and it failed, emotions are disabled
-        if self._emotion_analyzer is None or not hasattr(self._emotion_analyzer, '_recognizer') or self._emotion_analyzer._recognizer is None:
-            logger.error("HSEmotion failed to load — emotions disabled")
-            self._emotion_analyzer = None
+        # If CUDA failed, try CPU in subprocess
+        if device != "cpu":
+            logger.warning("HSEmotion failed on CUDA — testing CPU in subprocess")
+            if self._test_hsemotion_load("cpu"):
+                try:
+                    self._emotion_analyzer = EmotionAnalyzer(
+                        model_name=settings.hsemotion_model_name,
+                    )
+                    self._emotion_analyzer.load(device="cpu")
+                    logger.info("HSEmotion loaded on CPU (fallback)")
+                    return
+                except Exception as e:
+                    logger.warning("HSEmotion CPU load failed after subprocess test passed", error=str(e))
+
+        # All attempts failed — disable emotions
+        logger.error("HSEmotion failed to load on all devices — emotions disabled (will use neutral fallback)")
+        self._emotion_analyzer = None
 
     def _ensure_yolo_model(self):
         """Auto-download YOLO model if not found at configured path."""
