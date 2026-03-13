@@ -20,7 +20,7 @@ class CameraEvent(Base):
         server_default=func.gen_random_uuid(),
     )
     camera_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cameras.id"), nullable=False,
+        UUID(as_uuid=True), ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False,
     )
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     person_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

@@ -24,7 +24,7 @@ class EmotionRecord(Base):
         UUID(as_uuid=True), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False,
     )
     camera_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cameras.id"), nullable=False,
+        UUID(as_uuid=True), ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False,
     )
 
     # 8 emotion probabilities (0.0 to 1.0)

@@ -32,7 +32,7 @@ class FaceEmbedding(Base):
     quality_score: Mapped[float | None] = mapped_column(Float)
     face_bbox: Mapped[dict | None] = mapped_column(JSONB)
     source_camera_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cameras.id"),
+        UUID(as_uuid=True), ForeignKey("cameras.id", ondelete="SET NULL"),
     )
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
