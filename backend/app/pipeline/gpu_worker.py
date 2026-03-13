@@ -57,16 +57,19 @@ class GPUWorker:
 
         Returns True if HSEmotion can be loaded on the given device without crashing.
         """
-        test_code = (
-            "import torch; "
-            f"device = '{device}'; "
-            "_orig = torch.load; "
-            "def _patched(*a, **kw): kw.setdefault('weights_only', False); kw.setdefault('map_location', device); return _orig(*a, **kw)\n"
-            "torch.load = _patched; "
-            "from hsemotion.facial_emotions import HSEmotionRecognizer; "
-            f"r = HSEmotionRecognizer(model_name='{settings.hsemotion_model_name}', device='{device}'); "
-            "print('ok')"
-        )
+        test_code = "\n".join([
+            "import torch",
+            f"device = '{device}'",
+            "_orig = torch.load",
+            "def _patched(*a, **kw):",
+            "    kw.setdefault('weights_only', False)",
+            "    kw.setdefault('map_location', device)",
+            "    return _orig(*a, **kw)",
+            "torch.load = _patched",
+            "from hsemotion.facial_emotions import HSEmotionRecognizer",
+            f"r = HSEmotionRecognizer(model_name='{settings.hsemotion_model_name}', device=device)",
+            "print('ok')",
+        ])
         try:
             result = subprocess.run(
                 [sys.executable, "-c", test_code],
