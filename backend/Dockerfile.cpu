@@ -1,4 +1,18 @@
-# Dockerfile para ambientes sem NVIDIA GPU (macOS Apple Silicon, CI, etc.)
+# =============================================================================
+# Stage 1: Convert HSEmotion model to ONNX
+# =============================================================================
+FROM python:3.11-slim AS onnx-converter
+
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir timm onnxruntime
+
+WORKDIR /convert
+COPY scripts/convert_emotion_onnx.py .
+RUN python convert_emotion_onnx.py enet_b2_8 /models/enet_b2_8.onnx
+
+# =============================================================================
+# Stage 2: Application (CPU only)
+# =============================================================================
 FROM python:3.11-slim AS base
 
 ENV PYTHONUNBUFFERED=1
@@ -11,20 +25,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copiar pyproject.toml primeiro para cache de deps
+# Copy pre-converted ONNX emotion model
+COPY --from=onnx-converter /models/enet_b2_8.onnx /models/enet_b2_8.onnx
+
 COPY pyproject.toml ./
 
-# PyTorch CPU primeiro (index separado para não afetar outros pacotes)
+# PyTorch CPU (separate index)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-# Demais dependências
+# Other dependencies (no timm/hsemotion needed at runtime — using ONNX)
 RUN pip install --no-cache-dir \
     fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg alembic \
     pydantic pydantic-settings "redis[hiredis]" async-timeout pgvector \
     ultralytics insightface onnxruntime opencv-python-headless \
-    hsemotion "timm>=0.9.0,<1.0.0" numpy Pillow python-multipart \
+    numpy Pillow python-multipart \
     httpx "python-jose[cryptography]" "passlib[bcrypt]" structlog lap
 
 COPY . .

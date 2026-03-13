@@ -1,3 +1,19 @@
+# =============================================================================
+# Stage 1: Convert HSEmotion model to ONNX in a clean Python environment
+# (timm segfaults in the nvidia/cuda container, so we do this separately)
+# =============================================================================
+FROM python:3.11-slim AS onnx-converter
+
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir timm onnxruntime
+
+WORKDIR /convert
+COPY scripts/convert_emotion_onnx.py .
+RUN python convert_emotion_onnx.py enet_b2_8 /models/enet_b2_8.onnx
+
+# =============================================================================
+# Stage 2: Main application image with NVIDIA CUDA runtime
+# =============================================================================
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -15,9 +31,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
-# Copiar tudo primeiro, depois instalar
+# Copy pre-converted ONNX emotion model from stage 1
+COPY --from=onnx-converter /models/enet_b2_8.onnx /models/enet_b2_8.onnx
+
+# Install dependencies
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir ".[dev]"
+
+# Copy application code
 COPY . .
-RUN pip install --no-cache-dir ".[dev]"
 
 EXPOSE 8000
 
