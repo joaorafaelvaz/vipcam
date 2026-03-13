@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -10,6 +11,24 @@ EMOTION_NAMES = [
     "anger", "contempt", "disgust", "fear",
     "happiness", "neutral", "sadness", "surprise",
 ]
+
+# Model name → (timm backbone, num_classes)
+MODEL_CONFIG = {
+    "enet_b0_8_best_afew": ("tf_efficientnet_b0", 8),
+    "enet_b0_8_best_vgaf": ("tf_efficientnet_b0", 8),
+    "enet_b0_8_va_mtl": ("tf_efficientnet_b0", 8),
+    "enet_b2_8": ("tf_efficientnet_b2", 8),
+    "enet_b2_7": ("tf_efficientnet_b2", 7),
+}
+
+# HSEmotion model URLs (same as hsemotion package uses)
+MODEL_URLS = {
+    "enet_b0_8_best_afew": "https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/enet_b0_8_best_afew.pt",
+    "enet_b0_8_best_vgaf": "https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/enet_b0_8_best_vgaf.pt",
+    "enet_b0_8_va_mtl": "https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/enet_b0_8_va_mtl.pt",
+    "enet_b2_8": "https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/enet_b2_8.pt",
+    "enet_b2_7": "https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/enet_b2_7.pt",
+}
 
 
 @dataclass
@@ -72,42 +91,104 @@ def compute_satisfaction(scores: dict[str, float]) -> float:
 
 
 class EmotionAnalyzer:
-    """HSEmotion enet_b2_8 wrapper for facial emotion recognition."""
+    """Emotion recognition using timm + HSEmotion weights directly.
+
+    Bypasses the HSEmotionRecognizer class which can segfault on certain
+    CUDA/timm/torch combinations. Loads the model backbone via timm and
+    applies the HSEmotion pretrained weights manually.
+    """
 
     def __init__(self, model_name: str = "enet_b2_8"):
         self.model_name = model_name
-        self._recognizer = None
+        self._model = None
         self._device = None
+        self._transform = None
 
     def load(self, device: str = "cuda:0"):
         import torch
-        from hsemotion.facial_emotions import HSEmotionRecognizer
+        import timm
+        from torchvision import transforms
 
         self._device = device
-        logger.info("Loading HSEmotion model...", model=self.model_name, device=device)
+        logger.info("Loading emotion model (direct timm)...", model=self.model_name, device=device)
 
-        # Monkey-patch torch.load to:
-        # 1. Force weights_only=False (PyTorch 2.6+ defaults to True, breaks hsemotion)
-        # 2. Force map_location=device (model .pt was saved on CUDA, fails on CPU otherwise)
-        _original_load = torch.load
-        def _patched_load(*args, **kwargs):
-            kwargs.setdefault("weights_only", False)
-            kwargs.setdefault("map_location", device)
-            return _original_load(*args, **kwargs)
+        if self.model_name not in MODEL_CONFIG:
+            raise ValueError(f"Unknown model: {self.model_name}. Available: {list(MODEL_CONFIG.keys())}")
 
-        torch.load = _patched_load
+        backbone_name, num_classes = MODEL_CONFIG[self.model_name]
+
+        # Create the timm model
+        model = timm.create_model(backbone_name, pretrained=False, num_classes=num_classes)
+
+        # Download weights if not cached
+        weights_path = self._get_weights_path()
+
+        # Load weights
+        state_dict = torch.load(weights_path, map_location=device, weights_only=False)
+
+        # HSEmotion saves the full model state, not just state_dict.
+        # Handle both cases.
+        if isinstance(state_dict, dict) and "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
+        elif not isinstance(state_dict, dict):
+            # It might be the full model — extract state_dict
+            if hasattr(state_dict, "state_dict"):
+                state_dict = state_dict.state_dict()
+
+        # Try to load. Some HSEmotion weights have different key names.
         try:
-            self._recognizer = HSEmotionRecognizer(
-                model_name=self.model_name,
-                device=device,
-            )
-        finally:
-            torch.load = _original_load
-        logger.info("HSEmotion loaded successfully", device=device)
+            model.load_state_dict(state_dict, strict=False)
+        except Exception as e:
+            logger.warning("Partial state_dict load", error=str(e))
+
+        model.to(device)
+        model.eval()
+        self._model = model
+
+        # Standard ImageNet normalization (what HSEmotion uses internally)
+        self._transform = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((260, 260)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        logger.info("Emotion model loaded successfully (direct timm)", device=device, model=self.model_name)
+
+    def _get_weights_path(self) -> str:
+        """Get the path to model weights, downloading if necessary."""
+        import torch
+
+        cache_dir = Path.home() / ".cache" / "hsemotion"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        weights_file = cache_dir / f"{self.model_name}.pt"
+
+        if weights_file.exists():
+            logger.info("Using cached emotion weights", path=str(weights_file))
+            return str(weights_file)
+
+        # Try torch hub cache too (where HSEmotionRecognizer would have put it)
+        hub_dir = Path(torch.hub.get_dir()) / "checkpoints"
+        hub_file = hub_dir / f"{self.model_name}.pt"
+        if hub_file.exists():
+            logger.info("Using torch hub cached weights", path=str(hub_file))
+            return str(hub_file)
+
+        # Download
+        url = MODEL_URLS.get(self.model_name)
+        if not url:
+            raise FileNotFoundError(f"No download URL for model {self.model_name}")
+
+        logger.info("Downloading emotion model weights...", url=url)
+        torch.hub.download_url_to_file(url, str(weights_file))
+        logger.info("Emotion weights downloaded", path=str(weights_file))
+        return str(weights_file)
 
     def analyze(self, frame: np.ndarray, face_bbox: list[float]) -> EmotionResult:
-        if self._recognizer is None:
+        if self._model is None:
             raise RuntimeError("Model not loaded. Call load() first.")
+
+        import torch
 
         x1, y1, x2, y2 = [int(v) for v in face_bbox]
         h, w = frame.shape[:2]
@@ -118,7 +199,7 @@ class EmotionAnalyzer:
         if face_crop.size == 0:
             return self._neutral_result()
 
-        # Resize to a decent size for better emotion recognition
+        # Resize small faces
         min_size = 64
         fh, fw = face_crop.shape[:2]
         if fh < min_size or fw < min_size:
@@ -129,49 +210,39 @@ class EmotionAnalyzer:
                 interpolation=cv2.INTER_LINEAR,
             )
 
-        # Try with logits=True first, fall back to logits=False
-        try:
-            emotion_label, raw_scores = self._recognizer.predict_emotions(face_crop, logits=True)
-        except TypeError:
-            # Some HSEmotion versions don't support logits param
-            emotion_label, raw_scores = self._recognizer.predict_emotions(face_crop)
+        # Convert BGR → RGB
+        face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
 
-        # Build scores dict — HSEmotion returns scores in a specific order
+        # Transform and run inference
+        input_tensor = self._transform(face_rgb).unsqueeze(0).to(self._device)
+
+        with torch.no_grad():
+            logits = self._model(input_tensor)
+
+        # Convert logits to probabilities via softmax
+        probs = torch.nn.functional.softmax(logits, dim=1).cpu().numpy().flatten()
+
+        # Map to emotion names
         hsemotion_order = [
             "anger", "contempt", "disgust", "fear",
             "happiness", "neutral", "sadness", "surprise",
         ]
 
-        if isinstance(raw_scores, dict):
-            scores = {k.lower(): v for k, v in raw_scores.items()}
-        elif hasattr(raw_scores, '__len__'):
-            # raw_scores is a numpy array or list — apply softmax for proper probabilities
-            arr = np.array(raw_scores, dtype=np.float64).flatten()
-            exp_arr = np.exp(arr - np.max(arr))
-            probs = exp_arr / exp_arr.sum()
-            scores = {}
-            for i, name in enumerate(hsemotion_order):
-                scores[name] = float(probs[i]) if i < len(probs) else 0.0
-        else:
-            logger.debug("Unexpected raw_scores format from HSEmotion", type=type(raw_scores).__name__)
-            return self._neutral_result()
+        scores = {}
+        for i, name in enumerate(hsemotion_order):
+            scores[name] = float(probs[i]) if i < len(probs) else 0.0
 
-        # Ensure all emotion keys exist
+        # Ensure all keys exist
         for name in EMOTION_NAMES:
             if name not in scores:
                 scores[name] = 0.0
 
-        # Normalize to proper probabilities
+        # Normalize
         total = sum(scores.values())
         if total > 0:
             scores = {k: v / total for k, v in scores.items()}
 
-        # Use HSEmotion's label as dominant if valid, otherwise pick highest score
-        emotion_str = str(emotion_label).lower().strip()
-        if emotion_str in scores and scores[emotion_str] > 0.01:
-            dominant = emotion_str
-        else:
-            dominant = max(scores, key=scores.get)
+        dominant = max(scores, key=scores.get)
         valence = compute_valence(scores)
         arousal = compute_arousal(scores)
         satisfaction = compute_satisfaction(scores)
