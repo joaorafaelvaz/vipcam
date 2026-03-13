@@ -1,23 +1,13 @@
 """Convert HSEmotion PyTorch model to ONNX format.
 
-This script runs in a clean Python environment (no CUDA needed).
-It downloads the HSEmotion weights and exports to ONNX using timm.
+The HSEmotion .pt files contain full model objects (torch.save(model)),
+not just state_dicts. We load the full model directly and export to ONNX.
 
 Usage:
     python scripts/convert_emotion_onnx.py [model_name] [output_path]
-
-Example:
-    python scripts/convert_emotion_onnx.py enet_b2_8 /models/enet_b2_8.onnx
 """
 import sys
 from pathlib import Path
-
-MODEL_CONFIG = {
-    "enet_b0_8_best_afew": ("tf_efficientnet_b0", 8),
-    "enet_b0_8_best_vgaf": ("tf_efficientnet_b0", 8),
-    "enet_b2_8": ("tf_efficientnet_b2", 8),
-    "enet_b2_7": ("tf_efficientnet_b2", 7),
-}
 
 MODEL_URLS = {
     "enet_b0_8_best_afew": "https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/enet_b0_8_best_afew.pt",
@@ -28,14 +18,12 @@ MODEL_URLS = {
 
 
 def convert(model_name: str, output_path: str):
-    import timm
+    import numpy as np
     import torch
 
-    if model_name not in MODEL_CONFIG:
-        print(f"Unknown model: {model_name}. Available: {list(MODEL_CONFIG.keys())}")
+    if model_name not in MODEL_URLS:
+        print(f"Unknown model: {model_name}. Available: {list(MODEL_URLS.keys())}")
         sys.exit(1)
-
-    backbone, num_classes = MODEL_CONFIG[model_name]
 
     # Download weights
     url = MODEL_URLS[model_name]
@@ -47,17 +35,14 @@ def convert(model_name: str, output_path: str):
         print(f"Downloading {url}...")
         torch.hub.download_url_to_file(url, str(weights_path))
 
-    print(f"Loading {backbone} with {num_classes} classes...")
-    model = timm.create_model(backbone, pretrained=False, num_classes=num_classes)
-
-    state_dict = torch.load(str(weights_path), map_location="cpu", weights_only=False)
-    if isinstance(state_dict, dict) and "state_dict" in state_dict:
-        state_dict = state_dict["state_dict"]
-    elif not isinstance(state_dict, dict) and hasattr(state_dict, "state_dict"):
-        state_dict = state_dict.state_dict()
-
-    model.load_state_dict(state_dict, strict=False)
+    # HSEmotion .pt files are full model saves (torch.save(model, path))
+    # Load the complete model directly — no need for timm
+    print(f"Loading full model from {weights_path}...")
+    model = torch.load(str(weights_path), map_location="cpu", weights_only=False)
     model.eval()
+
+    print(f"Model type: {type(model).__name__}")
+    print(f"Model: {model.__class__.__module__}.{model.__class__.__name__}")
 
     # Export to ONNX
     dummy_input = torch.randn(1, 3, 260, 260)
@@ -75,11 +60,17 @@ def convert(model_name: str, output_path: str):
         opset_version=17,
     )
 
-    # Verify
+    # Verify with ONNX Runtime
     import onnxruntime as ort
     sess = ort.InferenceSession(str(output_file), providers=["CPUExecutionProvider"])
     result = sess.run(None, {"input": dummy_input.numpy()})
+    logits = result[0].flatten()
+
+    # Check that output is reasonable (not all zeros or uniform)
+    exp = np.exp(logits - np.max(logits))
+    probs = exp / exp.sum()
     print(f"ONNX verification OK — output shape: {result[0].shape}")
+    print(f"Sample probs (random input): {dict(zip(['anger','contempt','disgust','fear','happiness','neutral','sadness','surprise'], [f'{p:.3f}' for p in probs]))}")
     print(f"Model saved to: {output_file}")
 
 

@@ -19,8 +19,7 @@ dependencies = [
     "insightface>=0.7.0",
     "onnxruntime-gpu>=1.17.0",
     "opencv-python-headless>=4.9.0",
-    "hsemotion>=0.3.0",
-    "timm>=0.9.0,<1.0.0",
+    # hsemotion + timm only needed at build time (ONNX conversion), not runtime
     "numpy>=1.26.0",
     "Pillow>=10.0.0",
     "python-multipart>=0.0.9",
