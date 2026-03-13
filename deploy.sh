@@ -140,7 +140,18 @@ detect_compose() {
     elif command -v docker-compose >/dev/null 2>&1; then
         DC="docker-compose"
     else
-        fail "docker compose não encontrado. Instale o Docker primeiro."
+        # Fallback: tentar instalar plugin docker-compose v2
+        echo -e "  ${YELLOW}docker compose plugin não encontrado.${NC}"
+        echo -e "  Instalando docker-compose-plugin..."
+        if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq docker-compose-plugin 2>/dev/null
+            if docker compose version >/dev/null 2>&1; then
+                DC="docker compose"
+                ok "docker-compose-plugin instalado"
+                return
+            fi
+        fi
+        fail "docker compose não encontrado. Instale com: sudo apt-get install docker-compose-plugin"
     fi
 }
 
