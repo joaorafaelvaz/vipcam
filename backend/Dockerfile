@@ -5,7 +5,7 @@
 FROM python:3.11-slim AS onnx-converter
 
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir timm onnxruntime
+    && pip install --no-cache-dir timm onnxruntime onnxscript
 
 WORKDIR /convert
 COPY scripts/convert_emotion_onnx.py .
