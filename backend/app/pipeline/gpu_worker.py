@@ -99,6 +99,10 @@ class GPUWorker:
             return
         logger.info("Loading models...")
 
+        # IMPORTANT: Load emotion analyzer FIRST, before YOLO/InsightFace initialize CUDA.
+        # timm segfaults if loaded after CUDA context is already claimed by other models.
+        self._load_emotion_analyzer()
+
         # Ensure YOLO model exists (auto-download if needed)
         try:
             yolo_path = self._ensure_yolo_model()
@@ -120,9 +124,6 @@ class GPUWorker:
         except Exception as e:
             logger.error("Failed to load InsightFace recognizer", error=str(e))
             self._recognizer = None
-
-        # Emotion analyzer: direct timm + weights (bypasses HSEmotionRecognizer segfault)
-        self._load_emotion_analyzer()
 
         self._loaded = True
 
