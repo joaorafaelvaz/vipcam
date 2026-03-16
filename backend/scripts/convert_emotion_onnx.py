@@ -60,17 +60,27 @@ def convert(model_name: str, output_path: str):
         opset_version=17,
     )
 
-    # Verify with ONNX Runtime
+    # Verify ONNX output matches original PyTorch output
     import onnxruntime as ort
-    sess = ort.InferenceSession(str(output_file), providers=["CPUExecutionProvider"])
-    result = sess.run(None, {"input": dummy_input.numpy()})
-    logits = result[0].flatten()
 
-    # Check that output is reasonable (not all zeros or uniform)
-    exp = np.exp(logits - np.max(logits))
+    with torch.no_grad():
+        pt_logits = model(dummy_input).numpy().flatten()
+
+    sess = ort.InferenceSession(str(output_file), providers=["CPUExecutionProvider"])
+    onnx_logits = sess.run(None, {"input": dummy_input.numpy()})[0].flatten()
+
+    # Check outputs match (tolerance for float32 rounding)
+    max_diff = np.max(np.abs(pt_logits - onnx_logits))
+    print(f"Max diff PyTorch vs ONNX: {max_diff:.6f}")
+    if max_diff > 0.01:
+        print("ERROR: ONNX model output diverges from PyTorch! Weights may be wrong.")
+        sys.exit(1)
+
+    emotions = ['anger', 'contempt', 'disgust', 'fear', 'happiness', 'neutral', 'sadness', 'surprise']
+    exp = np.exp(onnx_logits - np.max(onnx_logits))
     probs = exp / exp.sum()
-    print(f"ONNX verification OK — output shape: {result[0].shape}")
-    print(f"Sample probs (random input): {dict(zip(['anger','contempt','disgust','fear','happiness','neutral','sadness','surprise'], [f'{p:.3f}' for p in probs]))}")
+    print(f"ONNX verification OK — output shape: {sess.run(None, {'input': dummy_input.numpy()})[0].shape}")
+    print(f"Sample probs: {dict(zip(emotions, [f'{p:.3f}' for p in probs]))}")
     print(f"Model saved to: {output_file}")
 
 
