@@ -6,8 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services import analytics_service
+from app.services.redis_service import redis_service
 
 router = APIRouter()
+
+DASHBOARD_CACHE_KEY = "cache:analytics:dashboard"
+DASHBOARD_CACHE_TTL = 15  # seconds
 
 
 @router.get("/occupancy")
@@ -27,7 +31,12 @@ async def get_occupancy(
 async def get_dashboard_summary(
     db: AsyncSession = Depends(get_db),
 ):
-    return await analytics_service.get_dashboard_summary(db)
+    cached = await redis_service.get_cached(DASHBOARD_CACHE_KEY)
+    if cached:
+        return cached
+    result = await analytics_service.get_dashboard_summary(db)
+    await redis_service.set_cached(DASHBOARD_CACHE_KEY, result, ttl=DASHBOARD_CACHE_TTL)
+    return result
 
 
 @router.get("/daily")

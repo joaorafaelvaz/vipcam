@@ -105,9 +105,32 @@ class EmotionAnalyzer:
         else:
             providers = ["CPUExecutionProvider"]
 
-        logger.info("Loading emotion ONNX model...", path=onnx_path, providers=providers)
+        import os
+
+        file_size = os.path.getsize(onnx_path)
+        logger.info(
+            "Loading emotion ONNX model...",
+            path=onnx_path,
+            size_mb=f"{file_size / 1024 / 1024:.1f}",
+            providers=providers,
+        )
         self._session = ort.InferenceSession(onnx_path, providers=providers)
-        logger.info("Emotion ONNX model loaded successfully", providers=providers)
+
+        # Quick sanity check: run dummy input and verify output isn't degenerate
+        import numpy as np
+
+        dummy = np.random.randn(1, 3, 260, 260).astype(np.float32)
+        test_logits = self._session.run(None, {"input": dummy})[0].flatten()
+        exp = np.exp(test_logits - np.max(test_logits))
+        probs = exp / exp.sum()
+        max_prob = float(np.max(probs))
+        logger.info(
+            "Emotion ONNX model loaded — sanity check",
+            providers=self._session.get_providers(),
+            output_shape=str(test_logits.shape),
+            max_prob=f"{max_prob:.3f}",
+            all_same=bool(max_prob < 0.15),  # 1/8 = 0.125, if all ~equal => bad weights
+        )
 
     def _find_onnx_model(self) -> str | None:
         """Search common locations for the ONNX model file."""

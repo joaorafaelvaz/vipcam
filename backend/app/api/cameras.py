@@ -101,10 +101,14 @@ async def get_snapshot(
 
     try:
         loop = asyncio.get_event_loop()
-        jpeg_bytes = await loop.run_in_executor(None, _grab_frame, camera.rtsp_url)
-        # Cache it in Redis for 10s so repeated requests don't hammer the camera
+        jpeg_bytes = await asyncio.wait_for(
+            loop.run_in_executor(None, _grab_frame, camera.rtsp_url),
+            timeout=5.0,
+        )
         await redis_service.set_snapshot(str(camera_id), jpeg_bytes, ttl=10)
         return Response(content=jpeg_bytes, media_type="image/jpeg")
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Snapshot grab timed out (5s)")
     except Exception as e:
         logger.warning("Snapshot grab failed", camera_id=str(camera_id), error=str(e))
         raise HTTPException(status_code=502, detail=f"Could not grab frame: {e}")
